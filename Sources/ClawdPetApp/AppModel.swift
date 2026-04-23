@@ -621,9 +621,9 @@ final class AppModel: ObservableObject {
         case .permissionRequest, .error:
             return false
         case .completed:
-            return age > 4
+            return age > 3
         case .reading, .runningCommand, .editingCode, .thinking:
-            return age > 6
+            return false
         case .idle, .unknown:
             return true
         }
@@ -654,7 +654,7 @@ final class AppModel: ObservableObject {
             return "Reading"
         case .runningCommand:
             if let command = cleanedMessage(event.message, prefix: "Command:") {
-                return "Bash \(clipped(command, limit: 24))"
+                return summarizedCommand(command)
             }
             return "Running"
         case .editingCode:
@@ -707,6 +707,113 @@ final class AppModel: ObservableObject {
             return value
         }
         return "\(value.prefix(limit - 1))..."
+    }
+
+    private func summarizedCommand(_ command: String) -> String {
+        let normalized = normalizedDisplayCommand(command)
+        let tokens = shellTokens(in: normalized)
+        guard let first = tokens.first?.lowercased() else {
+            return "Running"
+        }
+
+        switch first {
+        case "open":
+            if let target = commandDisplayTarget(from: tokens.dropFirst()) {
+                return "Open \(target)"
+            }
+            return "Open"
+        case "git":
+            if let subcommand = tokens.dropFirst().first?.lowercased() {
+                switch subcommand {
+                case "commit":
+                    return "Git commit"
+                case "push":
+                    return "Git push"
+                case "pull":
+                    return "Git pull"
+                case "add":
+                    return "Git add"
+                case "checkout", "switch":
+                    return "Git switch"
+                case "merge":
+                    return "Git merge"
+                case "rebase":
+                    return "Git rebase"
+                default:
+                    return "Git \(subcommand)"
+                }
+            }
+            return "Git"
+        case "swift":
+            if let subcommand = tokens.dropFirst().first?.lowercased() {
+                return "Swift \(subcommand)"
+            }
+            return "Swift"
+        case "python", "python3", "uv", "node", "npm", "pnpm", "yarn", "tmux":
+            if let target = commandDisplayTarget(from: tokens.dropFirst()) {
+                return "\(first.capitalized) \(target)"
+            }
+            return first.capitalized
+        default:
+            return "Bash \(clipped(normalized, limit: 24))"
+        }
+    }
+
+    private func normalizedDisplayCommand(_ command: String) -> String {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstSegment = trimmed
+            .components(separatedBy: "&&")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? trimmed
+
+        let tokens = shellTokens(in: firstSegment)
+        guard let first = tokens.first?.lowercased() else {
+            return firstSegment
+        }
+
+        let shellWrappers = ["bash", "zsh", "sh"]
+        if shellWrappers.contains(first), tokens.count >= 3, tokens[1] == "-lc" {
+            let wrapped = tokens.dropFirst(2).joined(separator: " ")
+            let unquoted = wrapped.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            return normalizedDisplayCommand(unquoted)
+        }
+
+        var startIndex = 0
+        while startIndex < tokens.count {
+            let token = tokens[startIndex]
+            if token == "env" {
+                startIndex += 1
+                continue
+            }
+            if token.contains("="), !token.hasPrefix("/"), !token.hasPrefix("./") {
+                startIndex += 1
+                continue
+            }
+            break
+        }
+
+        return tokens.dropFirst(startIndex).joined(separator: " ")
+    }
+
+    private func shellTokens(in command: String) -> [String] {
+        command
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+
+    private func commandDisplayTarget<S: Sequence>(from tokens: S) -> String? where S.Element == String {
+        for token in tokens {
+            let cleaned = token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            guard !cleaned.isEmpty, !cleaned.hasPrefix("-") else { continue }
+            if cleaned.hasSuffix(".app") || cleaned.contains("/") || cleaned.hasPrefix("~") || cleaned.hasPrefix(".") {
+                let component = URL(fileURLWithPath: cleaned.replacingOccurrences(of: "file://", with: "")).lastPathComponent
+                return clipped(component.isEmpty ? cleaned : component, limit: 20)
+            }
+            if cleaned.rangeOfCharacter(from: .letters) != nil {
+                return clipped(cleaned, limit: 20)
+            }
+        }
+        return nil
     }
 
     private func sessionLifetime(for event: AgentEvent) -> TimeInterval {

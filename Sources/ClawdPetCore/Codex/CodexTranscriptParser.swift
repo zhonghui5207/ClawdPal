@@ -23,6 +23,152 @@ public struct CodexTranscriptSnapshot: Equatable, Sendable {
 }
 
 public enum CodexTranscriptParser {
+    public struct Accumulator {
+        private var sessionID: String?
+        private var workingDirectory: String?
+        private var taskTitle: String?
+        private var currentTurn: TurnState?
+        private var lastCompletedTurn: CompletedTurn?
+        private var latestTimestamp: Date?
+
+        public init(fallbackTitle: String? = nil) {
+            self.taskTitle = CodexTranscriptParser.cleanedInlineText(fallbackTitle)
+        }
+
+        public mutating func consume(text: String) throws {
+            for rawLine in text.split(whereSeparator: \.isNewline) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty else { continue }
+                try consume(line: String(line))
+            }
+        }
+
+        public mutating func consume(line: String) throws {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(line.utf8))
+            guard let object = value.objectValue else { return }
+
+            let timestamp = CodexTranscriptParser.dateValue(in: object, key: "timestamp")
+            latestTimestamp = CodexTranscriptParser.maxDate(latestTimestamp, timestamp)
+
+            switch object["type"]?.stringValue {
+            case "session_meta":
+                guard let payload = object["payload"]?.objectValue else { return }
+                sessionID = CodexTranscriptParser.stringValue(in: payload, keys: ["id"]) ?? sessionID
+                workingDirectory = CodexTranscriptParser.stringValue(in: payload, keys: ["cwd"]) ?? workingDirectory
+            case "event_msg":
+                guard let payload = object["payload"]?.objectValue else { return }
+                switch payload["type"]?.stringValue {
+                case "task_started":
+                    let turnID = CodexTranscriptParser.stringValue(in: payload, keys: ["turn_id"]) ?? UUID().uuidString
+                    currentTurn = TurnState(
+                        turnID: turnID,
+                        taskTitle: taskTitle,
+                        latestUserLine: nil,
+                        latestUserAt: nil,
+                        latestAction: nil,
+                        latestActionAt: nil,
+                        startedAt: timestamp
+                    )
+                case "user_message":
+                    if let cleanedUserLine = CodexTranscriptParser.cleanedUserLine(from: CodexTranscriptParser.stringValue(in: payload, keys: ["message"])),
+                       var activeTurn = currentTurn {
+                        activeTurn.latestUserLine = cleanedUserLine
+                        activeTurn.latestUserAt = timestamp ?? activeTurn.latestUserAt
+                        currentTurn = activeTurn
+                    }
+                case "thread_name_updated":
+                    taskTitle = CodexTranscriptParser.cleanedInlineText(CodexTranscriptParser.stringValue(in: payload, keys: ["thread_name"]))
+                    if var activeTurn = currentTurn {
+                        activeTurn.taskTitle = taskTitle
+                        currentTurn = activeTurn
+                    }
+                case "task_complete":
+                    let completedTurnID = CodexTranscriptParser.stringValue(in: payload, keys: ["turn_id"])
+                    if let activeTurn = currentTurn, completedTurnID == nil || completedTurnID == activeTurn.turnID {
+                        lastCompletedTurn = CompletedTurn(
+                            taskTitle: activeTurn.taskTitle ?? taskTitle,
+                            latestUserLine: activeTurn.latestUserLine,
+                            completedAt: timestamp ?? latestTimestamp ?? Date.distantPast
+                        )
+                        currentTurn = nil
+                    }
+                default:
+                    break
+                }
+            case "response_item":
+                guard let payload = object["payload"]?.objectValue else { return }
+                switch payload["type"]?.stringValue {
+                case "function_call", "custom_tool_call":
+                    if var activeTurn = currentTurn,
+                       let event = CodexTranscriptParser.event(from: payload, sessionID: sessionID, workingDirectory: workingDirectory) {
+                        activeTurn.latestAction = event
+                        activeTurn.latestActionAt = timestamp ?? activeTurn.latestActionAt
+                        currentTurn = activeTurn
+                    }
+                default:
+                    break
+                }
+            default:
+                break
+            }
+        }
+
+        public func snapshot() -> CodexTranscriptSnapshot? {
+            guard let sessionID else {
+                return nil
+            }
+
+            let resolvedTitle = taskTitle ?? CodexTranscriptParser.clipped(currentTurn?.latestUserLine ?? lastCompletedTurn?.latestUserLine, limit: 40)
+            let resolvedEvent: AgentEvent
+            let updatedAt: Date
+            let resolvedUserLine: String?
+
+            if let currentTurn, let latestAction = currentTurn.latestAction, let latestActionAt = currentTurn.latestActionAt {
+                resolvedEvent = latestAction
+                updatedAt = latestActionAt
+                resolvedUserLine = currentTurn.latestUserLine
+            } else if let currentTurn, let latestUserLine = currentTurn.latestUserLine, let latestUserAt = currentTurn.latestUserAt {
+                resolvedEvent = AgentEvent(
+                    kind: .thinking,
+                    hookEventName: "UserPromptSubmit",
+                    message: "Prompt: \(CodexTranscriptParser.clipped(latestUserLine, limit: 72) ?? latestUserLine)",
+                    sessionID: sessionID,
+                    workingDirectory: workingDirectory
+                )
+                updatedAt = latestUserAt
+                resolvedUserLine = latestUserLine
+            } else if let lastCompletedTurn {
+                resolvedEvent = AgentEvent(
+                    kind: .completed,
+                    hookEventName: "Stop",
+                    message: "Done.",
+                    sessionID: sessionID,
+                    workingDirectory: workingDirectory
+                )
+                updatedAt = lastCompletedTurn.completedAt
+                resolvedUserLine = lastCompletedTurn.latestUserLine
+            } else {
+                resolvedEvent = AgentEvent(
+                    kind: .idle,
+                    hookEventName: "SessionStart",
+                    message: "Session started",
+                    sessionID: sessionID,
+                    workingDirectory: workingDirectory
+                )
+                updatedAt = latestTimestamp ?? Date.distantPast
+                resolvedUserLine = nil
+            }
+
+            return CodexTranscriptSnapshot(
+                sessionID: sessionID,
+                taskTitle: resolvedTitle,
+                latestUserLine: resolvedUserLine,
+                event: resolvedEvent,
+                updatedAt: updatedAt
+            )
+        }
+    }
+
     private struct TurnState {
         var turnID: String
         var taskTitle: String?
@@ -84,146 +230,9 @@ public enum CodexTranscriptParser {
     }
 
     public static func parseSession(from text: String, fallbackTitle: String? = nil) throws -> CodexTranscriptSnapshot? {
-        var sessionID: String?
-        var workingDirectory: String?
-        var taskTitle = cleanedInlineText(fallbackTitle)
-        var currentTurn: TurnState?
-        var lastCompletedTurn: CompletedTurn?
-        var latestTimestamp: Date?
-
-        for rawLine in text.split(whereSeparator: \.isNewline) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty else { continue }
-
-            let value = try JSONDecoder().decode(JSONValue.self, from: Data(line.utf8))
-            guard let object = value.objectValue else { continue }
-
-            let timestamp = dateValue(in: object, key: "timestamp")
-            latestTimestamp = maxDate(latestTimestamp, timestamp)
-
-            switch object["type"]?.stringValue {
-            case "session_meta":
-                guard let payload = object["payload"]?.objectValue else { continue }
-                sessionID = stringValue(in: payload, keys: ["id"]) ?? sessionID
-                workingDirectory = stringValue(in: payload, keys: ["cwd"]) ?? workingDirectory
-            case "event_msg":
-                guard let payload = object["payload"]?.objectValue else { continue }
-                switch payload["type"]?.stringValue {
-                case "task_started":
-                    let turnID = stringValue(in: payload, keys: ["turn_id"]) ?? UUID().uuidString
-                    currentTurn = TurnState(
-                        turnID: turnID,
-                        taskTitle: taskTitle,
-                        latestUserLine: nil,
-                        latestUserAt: nil,
-                        latestAction: nil,
-                        latestActionAt: nil,
-                        startedAt: timestamp
-                    )
-                case "user_message":
-                    if let cleanedUserLine = cleanedUserLine(from: stringValue(in: payload, keys: ["message"])) {
-                        if var activeTurn = currentTurn {
-                            activeTurn.latestUserLine = cleanedUserLine
-                            activeTurn.latestUserAt = timestamp ?? activeTurn.latestUserAt
-                            currentTurn = activeTurn
-                        }
-                    }
-                case "thread_name_updated":
-                    taskTitle = cleanedInlineText(stringValue(in: payload, keys: ["thread_name"]))
-                    if currentTurn != nil {
-                        currentTurn?.taskTitle = taskTitle
-                    }
-                case "task_complete":
-                    let completedTurnID = stringValue(in: payload, keys: ["turn_id"])
-                    if let activeTurn = currentTurn, completedTurnID == nil || completedTurnID == activeTurn.turnID {
-                        lastCompletedTurn = CompletedTurn(
-                            taskTitle: activeTurn.taskTitle ?? taskTitle,
-                            latestUserLine: activeTurn.latestUserLine,
-                            completedAt: timestamp ?? latestTimestamp ?? Date.distantPast
-                        )
-                        currentTurn = nil
-                    }
-                default:
-                    break
-                }
-            case "response_item":
-                guard let payload = object["payload"]?.objectValue else { continue }
-                switch payload["type"]?.stringValue {
-                case "function_call", "custom_tool_call":
-                    if var activeTurn = currentTurn,
-                       let event = event(from: payload, sessionID: sessionID, workingDirectory: workingDirectory) {
-                        activeTurn.latestAction = event
-                        activeTurn.latestActionAt = timestamp ?? activeTurn.latestActionAt
-                        currentTurn = activeTurn
-                    }
-                default:
-                    break
-                }
-            default:
-                break
-            }
-        }
-
-        guard let sessionID else {
-            return nil
-        }
-
-        if taskTitle == nil {
-            taskTitle = clipped(currentTurn?.latestUserLine ?? lastCompletedTurn?.latestUserLine, limit: 40)
-        }
-
-        let resolvedEvent: AgentEvent
-        let updatedAt: Date
-        let resolvedUserLine: String?
-        let resolvedTitle: String?
-
-        if let currentTurn, let latestAction = currentTurn.latestAction, let latestActionAt = currentTurn.latestActionAt {
-            resolvedEvent = latestAction
-            updatedAt = latestActionAt
-            resolvedUserLine = currentTurn.latestUserLine
-            resolvedTitle = currentTurn.taskTitle ?? taskTitle
-        } else if let currentTurn, let latestUserLine = currentTurn.latestUserLine, let latestUserAt = currentTurn.latestUserAt {
-            resolvedEvent = AgentEvent(
-                kind: .thinking,
-                hookEventName: "UserPromptSubmit",
-                message: "Prompt: \(clipped(latestUserLine, limit: 72) ?? latestUserLine)",
-                sessionID: sessionID,
-                workingDirectory: workingDirectory
-            )
-            updatedAt = latestUserAt
-            resolvedUserLine = latestUserLine
-            resolvedTitle = currentTurn.taskTitle ?? taskTitle
-        } else if let lastCompletedTurn {
-            resolvedEvent = AgentEvent(
-                kind: .completed,
-                hookEventName: "Stop",
-                message: "Done.",
-                sessionID: sessionID,
-                workingDirectory: workingDirectory
-            )
-            updatedAt = lastCompletedTurn.completedAt
-            resolvedUserLine = lastCompletedTurn.latestUserLine
-            resolvedTitle = lastCompletedTurn.taskTitle ?? taskTitle
-        } else {
-            resolvedEvent = AgentEvent(
-                kind: .idle,
-                hookEventName: "SessionStart",
-                message: "Session started",
-                sessionID: sessionID,
-                workingDirectory: workingDirectory
-            )
-            updatedAt = latestTimestamp ?? Date.distantPast
-            resolvedUserLine = nil
-            resolvedTitle = taskTitle
-        }
-
-        return CodexTranscriptSnapshot(
-            sessionID: sessionID,
-            taskTitle: resolvedTitle,
-            latestUserLine: resolvedUserLine,
-            event: resolvedEvent,
-            updatedAt: updatedAt
-        )
+        var accumulator = Accumulator(fallbackTitle: fallbackTitle)
+        try accumulator.consume(text: text)
+        return accumulator.snapshot()
     }
 
     private static func event(

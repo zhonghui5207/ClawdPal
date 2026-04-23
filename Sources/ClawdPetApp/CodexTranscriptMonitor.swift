@@ -4,6 +4,8 @@ import Foundation
 final class CodexTranscriptMonitor {
     private struct CachedSnapshot {
         var modifiedAt: Date
+        var fileSize: UInt64
+        var accumulator: CodexTranscriptParser.Accumulator
         var snapshot: CodexTranscriptSnapshot?
     }
 
@@ -41,18 +43,57 @@ final class CodexTranscriptMonitor {
 
     private func snapshot(for url: URL) -> CodexTranscriptSnapshot? {
         guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let modifiedAt = attributes[.modificationDate] as? Date else {
+              let modifiedAt = attributes[.modificationDate] as? Date,
+              let fileSize = attributes[.size] as? NSNumber else {
             return nil
         }
 
-        if let cached = cache[url], cached.modifiedAt == modifiedAt {
+        let size = fileSize.uint64Value
+
+        if let cached = cache[url], cached.modifiedAt == modifiedAt, cached.fileSize == size {
             return cached.snapshot
         }
 
-        let data = try? Data(contentsOf: url)
-        let parsed = data.flatMap { try? CodexTranscriptParser.parseSession(from: $0) }
-        cache[url] = CachedSnapshot(modifiedAt: modifiedAt, snapshot: parsed)
-        return parsed
+        if var cached = cache[url], size >= cached.fileSize, let delta = try? readDelta(from: url, offset: cached.fileSize) {
+            do {
+                try cached.accumulator.consume(text: delta)
+                cached.modifiedAt = modifiedAt
+                cached.fileSize = size
+                cached.snapshot = cached.accumulator.snapshot()
+                cache[url] = cached
+                return cached.snapshot
+            } catch {
+                // fall through to full reload on parse mismatch
+            }
+        }
+
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        do {
+            var accumulator = CodexTranscriptParser.Accumulator()
+            try accumulator.consume(text: text)
+            let snapshot = accumulator.snapshot()
+            cache[url] = CachedSnapshot(
+                modifiedAt: modifiedAt,
+                fileSize: size,
+                accumulator: accumulator,
+                snapshot: snapshot
+            )
+            return snapshot
+        } catch {
+            return nil
+        }
+    }
+
+    private func readDelta(from url: URL, offset: UInt64) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: offset)
+        let data = try handle.readToEnd() ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func loadThreadNames() -> [String: String] {
