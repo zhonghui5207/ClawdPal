@@ -23,6 +23,22 @@ public struct CodexTranscriptSnapshot: Equatable, Sendable {
 }
 
 public enum CodexTranscriptParser {
+    private struct TurnState {
+        var turnID: String
+        var taskTitle: String?
+        var latestUserLine: String?
+        var latestUserAt: Date?
+        var latestAction: AgentEvent?
+        var latestActionAt: Date?
+        var startedAt: Date?
+    }
+
+    private struct CompletedTurn {
+        var taskTitle: String?
+        var latestUserLine: String?
+        var completedAt: Date
+    }
+
     private static let readOnlyCommands: Set<String> = [
         "cat", "sed", "head", "tail", "nl", "less", "more"
     ]
@@ -71,11 +87,8 @@ public enum CodexTranscriptParser {
         var sessionID: String?
         var workingDirectory: String?
         var taskTitle = cleanedInlineText(fallbackTitle)
-        var latestUserLine: String?
-        var latestUserAt: Date?
-        var latestAction: AgentEvent?
-        var latestActionAt: Date?
-        var latestCompletionAt: Date?
+        var currentTurn: TurnState?
+        var lastCompletedTurn: CompletedTurn?
         var latestTimestamp: Date?
 
         for rawLine in text.split(whereSeparator: \.isNewline) {
@@ -96,15 +109,40 @@ public enum CodexTranscriptParser {
             case "event_msg":
                 guard let payload = object["payload"]?.objectValue else { continue }
                 switch payload["type"]?.stringValue {
+                case "task_started":
+                    let turnID = stringValue(in: payload, keys: ["turn_id"]) ?? UUID().uuidString
+                    currentTurn = TurnState(
+                        turnID: turnID,
+                        taskTitle: taskTitle,
+                        latestUserLine: nil,
+                        latestUserAt: nil,
+                        latestAction: nil,
+                        latestActionAt: nil,
+                        startedAt: timestamp
+                    )
                 case "user_message":
                     if let cleanedUserLine = cleanedUserLine(from: stringValue(in: payload, keys: ["message"])) {
-                        latestUserLine = cleanedUserLine
-                        latestUserAt = timestamp ?? latestUserAt
+                        if var activeTurn = currentTurn {
+                            activeTurn.latestUserLine = cleanedUserLine
+                            activeTurn.latestUserAt = timestamp ?? activeTurn.latestUserAt
+                            currentTurn = activeTurn
+                        }
                     }
                 case "thread_name_updated":
                     taskTitle = cleanedInlineText(stringValue(in: payload, keys: ["thread_name"]))
+                    if currentTurn != nil {
+                        currentTurn?.taskTitle = taskTitle
+                    }
                 case "task_complete":
-                    latestCompletionAt = timestamp ?? latestCompletionAt
+                    let completedTurnID = stringValue(in: payload, keys: ["turn_id"])
+                    if let activeTurn = currentTurn, completedTurnID == nil || completedTurnID == activeTurn.turnID {
+                        lastCompletedTurn = CompletedTurn(
+                            taskTitle: activeTurn.taskTitle ?? taskTitle,
+                            latestUserLine: activeTurn.latestUserLine,
+                            completedAt: timestamp ?? latestTimestamp ?? Date.distantPast
+                        )
+                        currentTurn = nil
+                    }
                 default:
                     break
                 }
@@ -112,9 +150,11 @@ public enum CodexTranscriptParser {
                 guard let payload = object["payload"]?.objectValue else { continue }
                 switch payload["type"]?.stringValue {
                 case "function_call", "custom_tool_call":
-                    if let event = event(from: payload, sessionID: sessionID, workingDirectory: workingDirectory) {
-                        latestAction = event
-                        latestActionAt = timestamp ?? latestActionAt
+                    if var activeTurn = currentTurn,
+                       let event = event(from: payload, sessionID: sessionID, workingDirectory: workingDirectory) {
+                        activeTurn.latestAction = event
+                        activeTurn.latestActionAt = timestamp ?? activeTurn.latestActionAt
+                        currentTurn = activeTurn
                     }
                 default:
                     break
@@ -129,16 +169,20 @@ public enum CodexTranscriptParser {
         }
 
         if taskTitle == nil {
-            taskTitle = clipped(latestUserLine, limit: 40)
+            taskTitle = clipped(currentTurn?.latestUserLine ?? lastCompletedTurn?.latestUserLine, limit: 40)
         }
 
         let resolvedEvent: AgentEvent
         let updatedAt: Date
+        let resolvedUserLine: String?
+        let resolvedTitle: String?
 
-        if let latestAction, let latestActionAt {
+        if let currentTurn, let latestAction = currentTurn.latestAction, let latestActionAt = currentTurn.latestActionAt {
             resolvedEvent = latestAction
             updatedAt = latestActionAt
-        } else if let latestUserLine, let latestUserAt {
+            resolvedUserLine = currentTurn.latestUserLine
+            resolvedTitle = currentTurn.taskTitle ?? taskTitle
+        } else if let currentTurn, let latestUserLine = currentTurn.latestUserLine, let latestUserAt = currentTurn.latestUserAt {
             resolvedEvent = AgentEvent(
                 kind: .thinking,
                 hookEventName: "UserPromptSubmit",
@@ -147,7 +191,9 @@ public enum CodexTranscriptParser {
                 workingDirectory: workingDirectory
             )
             updatedAt = latestUserAt
-        } else if let latestCompletionAt {
+            resolvedUserLine = latestUserLine
+            resolvedTitle = currentTurn.taskTitle ?? taskTitle
+        } else if let lastCompletedTurn {
             resolvedEvent = AgentEvent(
                 kind: .completed,
                 hookEventName: "Stop",
@@ -155,7 +201,9 @@ public enum CodexTranscriptParser {
                 sessionID: sessionID,
                 workingDirectory: workingDirectory
             )
-            updatedAt = latestCompletionAt
+            updatedAt = lastCompletedTurn.completedAt
+            resolvedUserLine = lastCompletedTurn.latestUserLine
+            resolvedTitle = lastCompletedTurn.taskTitle ?? taskTitle
         } else {
             resolvedEvent = AgentEvent(
                 kind: .idle,
@@ -165,12 +213,14 @@ public enum CodexTranscriptParser {
                 workingDirectory: workingDirectory
             )
             updatedAt = latestTimestamp ?? Date.distantPast
+            resolvedUserLine = nil
+            resolvedTitle = taskTitle
         }
 
         return CodexTranscriptSnapshot(
             sessionID: sessionID,
-            taskTitle: taskTitle,
-            latestUserLine: latestUserLine,
+            taskTitle: resolvedTitle,
+            latestUserLine: resolvedUserLine,
             event: resolvedEvent,
             updatedAt: updatedAt
         )

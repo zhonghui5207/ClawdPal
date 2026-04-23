@@ -8,6 +8,7 @@ struct CodexTranscriptParserTests {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"019db8ff-3ec9-7091-8715-e7ce0be39b75","cwd":"/Users/ryan/code/ClawdPet"}}
         {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"019db8ff-3ec9-7091-8715-e7ce0be39b75","thread_name":"修复拖动卡顿抖动"}}
+        {"timestamp":"2026-04-23T06:21:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
         {"timestamp":"2026-04-23T06:21:10.000Z","type":"event_msg","payload":{"type":"user_message","message":"Read /Users/ryan/code/ClawdPet/README.md, then run git status"}}
         {"timestamp":"2026-04-23T06:21:12.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,220p' README.md\\",\\"workdir\\":\\"/Users/ryan/code/ClawdPet\\"}","call_id":"call_demo"}}
         """
@@ -26,6 +27,7 @@ struct CodexTranscriptParserTests {
     func fallsBackToPromptWhenNoToolCallExists() throws {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
         {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"user_message","message":"继续把 transcript 方案接进面板里"}}
         """
 
@@ -41,6 +43,7 @@ struct CodexTranscriptParserTests {
     func parsesSearchCommandAsReading() throws {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
         {"timestamp":"2026-04-23T06:20:40.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"rg -n \\\\\\"drag\\\\\\" Sources\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo"}}
         """
 
@@ -54,6 +57,7 @@ struct CodexTranscriptParserTests {
     func ignoresHousekeepingCommandAndKeepsLastMeaningfulAction() throws {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
         {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"user_message","message":"继续修面板"}}        
         {"timestamp":"2026-04-23T06:20:40.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,220p' README.md\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo_1"}}
         {"timestamp":"2026-04-23T06:20:42.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"git status --short\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo_2"}}
@@ -69,6 +73,7 @@ struct CodexTranscriptParserTests {
     func dropsTerminalPromptUserLine() throws {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
         {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"user_message","message":"󰀵 ryan …/ClawdPet ❯ open .build/ClawdPet.app"}}
         {"timestamp":"2026-04-23T06:20:40.000Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"demo-session","thread_name":"改造 Clawd 浮宠架构"}}
         """

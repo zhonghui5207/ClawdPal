@@ -421,7 +421,12 @@ final class AppModel: ObservableObject {
 
     private func applyTranscriptSnapshots(_ snapshots: [CodexTranscriptSnapshot]) {
         var nextCodexSessions: [String: TrackedSession] = [:]
+        let now = Date()
         for snapshot in snapshots {
+            let age = now.timeIntervalSince(snapshot.updatedAt)
+            if age >= sessionLifetime(for: snapshot.event) {
+                continue
+            }
             nextCodexSessions[snapshot.sessionID] = TrackedSession(
                 event: snapshot.event,
                 updatedAt: snapshot.updatedAt,
