@@ -1,6 +1,18 @@
 import Foundation
 
 public enum CodexHookDecoder {
+    private static let readingTools: Set<String> = [
+        "Read", "LS", "Glob", "Grep", "Search", "WebFetch", "WebSearch"
+    ]
+
+    private static let commandTools: Set<String> = [
+        "Bash", "Shell"
+    ]
+
+    private static let editingTools: Set<String> = [
+        "Edit", "Write", "MultiEdit", "NotebookEdit"
+    ]
+
     public static func decodeEvent(from data: Data) throws -> AgentEvent {
         let payload = try JSONDecoder().decode(JSONValue.self, from: data)
         return event(from: payload)
@@ -18,12 +30,18 @@ public enum CodexHookDecoder {
             kind = .idle
         case "UserPromptSubmit":
             kind = .thinking
+        case "PreToolUse":
+            kind = kindForTool(toolName)
+        case "PostToolUse":
+            kind = .thinking
+        case "PostToolUseFailure":
+            kind = .error
         case "PermissionRequest":
             kind = .permissionRequest
         case "Stop":
             kind = .completed
         default:
-            kind = message == nil ? .unknown : .thinking
+            kind = toolName.map(kindForTool) ?? (message == nil ? .unknown : .thinking)
         }
 
         return AgentEvent(
@@ -53,7 +71,38 @@ public enum CodexHookDecoder {
         if hookName == "Stop" {
             return "Done."
         }
+
+        guard let toolInput = object["tool_input"]?.objectValue ?? object["toolInput"]?.objectValue else {
+            return nil
+        }
+
+        if let command = toolInput["command"]?.stringValue {
+            return "Command: \(clipped(command))"
+        }
+        if let filePath = toolInput["file_path"]?.stringValue ?? toolInput["path"]?.stringValue {
+            return "File: \(lastPathComponent(filePath))"
+        }
+        if let pattern = toolInput["pattern"]?.stringValue {
+            return "Search: \(clipped(pattern))"
+        }
+
         return nil
+    }
+
+    private static func kindForTool(_ toolName: String?) -> AgentEventKind {
+        guard let toolName else {
+            return .thinking
+        }
+        if readingTools.contains(toolName) {
+            return .reading
+        }
+        if commandTools.contains(toolName) {
+            return .runningCommand
+        }
+        if editingTools.contains(toolName) {
+            return .editingCode
+        }
+        return .thinking
     }
 
     private static func stringValue(in object: [String: JSONValue], keys: [String]) -> String? {
@@ -73,5 +122,10 @@ public enum CodexHookDecoder {
             return normalized
         }
         return "\(normalized.prefix(limit - 1))..."
+    }
+
+    private static func lastPathComponent(_ path: String) -> String {
+        let url = URL(fileURLWithPath: path)
+        return url.lastPathComponent.isEmpty ? path : url.lastPathComponent
     }
 }
