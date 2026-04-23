@@ -4,6 +4,10 @@ import Foundation
 enum SetupCommand: String {
     case installClaude = "install-claude"
     case uninstallClaude = "uninstall-claude"
+    case installCodex = "install-codex"
+    case uninstallCodex = "uninstall-codex"
+    case installAll = "install-all"
+    case uninstallAll = "uninstall-all"
     case printHookPath = "print-hook-path"
     case help = "help"
 }
@@ -67,13 +71,17 @@ func printUsage() {
     Commands:
       install-claude [--settings ~/.claude/settings.json] [--hook /path/to/ClawdPetHooks]
       uninstall-claude [--settings ~/.claude/settings.json]
+      install-codex [--settings ~/.codex/hooks.json] [--hook /path/to/ClawdPetHooks]
+      uninstall-codex [--settings ~/.codex/hooks.json]
+      install-all [--hook /path/to/ClawdPetHooks]
+      uninstall-all
       print-hook-path
 
     Build first:
       swift build
 
     Then install:
-      swift run ClawdPetSetup install-claude
+      swift run ClawdPetSetup install-all
     """)
 }
 
@@ -102,6 +110,59 @@ do {
             print("Backup: \(backupPath)")
         }
         print("Events touched: \(result.installedEvents.joined(separator: ", "))")
+    case .installCodex:
+        let hookPath = options.hookPath ?? inferredHookPath()
+        let settingsPath = options.settingsPath == ClaudeHookSettings.defaultSettingsPath
+            ? CodexHookSettings.defaultSettingsPath
+            : options.settingsPath
+        let result = try CodexHookSettings.install(
+            settingsPath: settingsPath,
+            hookBinaryPath: hookPath
+        )
+        print("Installed ClawdPet Codex hooks")
+        print("Settings: \(result.settingsPath)")
+        if let backupPath = result.backupPath {
+            print("Backup: \(backupPath)")
+        }
+        print("Hook binary: \(hookPath)")
+        print("Events: \(result.installedEvents.joined(separator: ", "))")
+    case .uninstallCodex:
+        let settingsPath = options.settingsPath == ClaudeHookSettings.defaultSettingsPath
+            ? CodexHookSettings.defaultSettingsPath
+            : options.settingsPath
+        let result = try CodexHookSettings.uninstall(settingsPath: settingsPath)
+        print("Removed ClawdPet Codex hooks")
+        print("Settings: \(result.settingsPath)")
+        if let backupPath = result.backupPath {
+            print("Backup: \(backupPath)")
+        }
+        print("Events touched: \(result.installedEvents.joined(separator: ", "))")
+    case .installAll:
+        let hookPath = options.hookPath ?? inferredHookPath()
+        let claude = try ClaudeHookSettings.install(hookBinaryPath: hookPath)
+        let codex = try CodexHookSettings.install(hookBinaryPath: hookPath)
+        print("Installed ClawdPet hooks")
+        print("Claude settings: \(claude.settingsPath)")
+        if let backupPath = claude.backupPath {
+            print("Claude backup: \(backupPath)")
+        }
+        print("Codex settings: \(codex.settingsPath)")
+        if let backupPath = codex.backupPath {
+            print("Codex backup: \(backupPath)")
+        }
+        print("Hook binary: \(hookPath)")
+    case .uninstallAll:
+        let claude = try ClaudeHookSettings.uninstall()
+        let codex = try CodexHookSettings.uninstall()
+        print("Removed ClawdPet hooks")
+        print("Claude settings: \(claude.settingsPath)")
+        if let backupPath = claude.backupPath {
+            print("Claude backup: \(backupPath)")
+        }
+        print("Codex settings: \(codex.settingsPath)")
+        if let backupPath = codex.backupPath {
+            print("Codex backup: \(backupPath)")
+        }
     case .printHookPath:
         print(inferredHookPath())
     case .help:

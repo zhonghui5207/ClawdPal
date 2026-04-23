@@ -7,9 +7,10 @@ final class FloatingPetWindowController {
     }
 
     private enum Layout {
-        static let size = NSSize(width: 320, height: 260)
+        static let width: CGFloat = 320
+        static let compactHeight: CGFloat = 260
+        static let fallbackExpandedHeight: CGFloat = 420
         static let margin: CGFloat = 40
-        static let snapDistance: CGFloat = 120
     }
 
     private let window: NSPanel
@@ -17,8 +18,11 @@ final class FloatingPetWindowController {
 
     init(appModel: AppModel) {
         let contentView = PetOverlayView(appModel: appModel)
-        let hostingView = DraggableHostingView(rootView: contentView)
-        hostingView.frame = NSRect(origin: .zero, size: Layout.size)
+        let hostingView = NSHostingView(rootView: contentView)
+        hostingView.frame = NSRect(
+            origin: .zero,
+            size: NSSize(width: Layout.width, height: Layout.compactHeight)
+        )
 
         window = NSPanel(
             contentRect: Self.initialFrame(),
@@ -32,7 +36,7 @@ final class FloatingPetWindowController {
         window.hasShadow = false
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.ignoresMouseEvents = false
 
         NotificationCenter.default.addObserver(
@@ -59,6 +63,12 @@ final class FloatingPetWindowController {
             name: .clawdPetDragEnded,
             object: window
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(setPanelOpen(_:)),
+            name: .clawdPetSetPanelOpen,
+            object: nil
+        )
     }
 
     deinit {
@@ -74,11 +84,20 @@ final class FloatingPetWindowController {
     }
 
     @objc private func saveFrame() {
-        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: DefaultsKey.windowFrame)
+        UserDefaults.standard.set(NSStringFromRect(Self.persistedFrame(for: window.frame)), forKey: DefaultsKey.windowFrame)
     }
 
     @objc private func dragEnded() {
-        snapToNearestEdgeIfNeeded()
+        guard !isAdjustingFrame else { return }
+        let clampedFrame = Self.clampedFrame(window.frame)
+        guard clampedFrame != window.frame else {
+            saveFrame()
+            return
+        }
+
+        isAdjustingFrame = true
+        window.setFrame(clampedFrame, display: true, animate: false)
+        isAdjustingFrame = false
         saveFrame()
     }
 
@@ -88,69 +107,17 @@ final class FloatingPetWindowController {
         saveFrame()
     }
 
-    private func snapToNearestEdgeIfNeeded() {
-        guard !isAdjustingFrame else { return }
-        guard let screen = window.screen ?? NSScreen.main else { return }
-        let screenFrame = screen.frame
-        let visibleFrame = screen.visibleFrame
-        let frame = window.frame
-        let allowedFrame = NSRect(
-            x: visibleFrame.minX,
-            y: visibleFrame.minY,
-            width: visibleFrame.width,
-            height: screenFrame.maxY - visibleFrame.minY
-        )
-
-        var target = frame
-        let distances: [(CGFloat, Edge)] = [
-            (abs(frame.minX - allowedFrame.minX), .left),
-            (abs(allowedFrame.maxX - frame.maxX), .right),
-            (abs(frame.minY - allowedFrame.minY), .bottom),
-            (abs(allowedFrame.maxY - frame.maxY), .top)
-        ]
-        guard let nearest = distances.min(by: { $0.0 < $1.0 }),
-              nearest.0 <= Layout.snapDistance else {
-            clampWindowIntoAllowedFrame(allowedFrame)
-            return
-        }
-
-        switch nearest.1 {
-        case .left:
-            target.origin.x = allowedFrame.minX
-        case .right:
-            target.origin.x = allowedFrame.maxX - frame.width
-        case .bottom:
-            target.origin.y = allowedFrame.minY
-        case .top:
-            target.origin.y = allowedFrame.maxY - frame.height
-        }
-
-        target.origin.x = min(max(target.origin.x, allowedFrame.minX), allowedFrame.maxX - target.width)
-        target.origin.y = min(max(target.origin.y, allowedFrame.minY), allowedFrame.maxY - target.height)
-
-        guard target != frame else { return }
-        isAdjustingFrame = true
-        window.setFrame(target, display: true, animate: true)
-        isAdjustingFrame = false
-    }
-
-    private func clampWindowIntoAllowedFrame(_ allowedFrame: NSRect) {
-        let frame = window.frame
-        var target = frame
-        target.origin.x = min(max(target.origin.x, allowedFrame.minX), allowedFrame.maxX - target.width)
-        target.origin.y = min(max(target.origin.y, allowedFrame.minY), allowedFrame.maxY - target.height)
-        guard target != frame else { return }
-
-        isAdjustingFrame = true
-        window.setFrame(target, display: true, animate: false)
-        isAdjustingFrame = false
+    @objc private func setPanelOpen(_ notification: Notification) {
+        guard let isOpen = notification.userInfo?["isOpen"] as? Bool else { return }
+        let preferredHeight = notification.userInfo?["preferredHeight"] as? CGFloat
+        resizeWindow(isPanelOpen: isOpen, preferredHeight: preferredHeight)
     }
 
     private static func initialFrame() -> NSRect {
         if let savedFrame = UserDefaults.standard.string(forKey: DefaultsKey.windowFrame) {
             let frame = NSRectFromString(savedFrame)
             if frame.width > 0, frame.height > 0 {
-                return frame
+                return clampedFrame(persistedFrame(for: frame))
             }
         }
 
@@ -158,7 +125,7 @@ final class FloatingPetWindowController {
     }
 
     private static func defaultFrame() -> NSRect {
-        let size = Layout.size
+        let size = NSSize(width: Layout.width, height: Layout.compactHeight)
         guard let visibleFrame = NSScreen.main?.visibleFrame else {
             return NSRect(origin: NSPoint(x: 80, y: 140), size: size)
         }
@@ -170,11 +137,43 @@ final class FloatingPetWindowController {
             height: size.height
         )
     }
-}
 
-private enum Edge {
-    case left
-    case right
-    case bottom
-    case top
+    private static func clampedFrame(_ frame: NSRect) -> NSRect {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(frame) }) ?? NSScreen.main else {
+            return defaultFrame()
+        }
+
+        let visibleFrame = screen.visibleFrame
+        let screenFrame = screen.frame
+        var target = frame
+        target.origin.x = min(max(target.origin.x, visibleFrame.minX), visibleFrame.maxX - target.width)
+        target.origin.y = min(max(target.origin.y, visibleFrame.minY), screenFrame.maxY - target.height)
+        return target
+    }
+
+    private func resizeWindow(isPanelOpen: Bool, preferredHeight: CGFloat? = nil) {
+        guard !isAdjustingFrame else { return }
+
+        let targetHeight = isPanelOpen
+            ? max(preferredHeight ?? Layout.fallbackExpandedHeight, Layout.fallbackExpandedHeight)
+            : Layout.compactHeight
+        guard abs(window.frame.height - targetHeight) > 0.5 else { return }
+
+        var targetFrame = window.frame
+        targetFrame.size.width = Layout.width
+        targetFrame.size.height = targetHeight
+        targetFrame = Self.clampedFrame(targetFrame)
+
+        isAdjustingFrame = true
+        window.setFrame(targetFrame, display: true, animate: true)
+        isAdjustingFrame = false
+        saveFrame()
+    }
+
+    private static func persistedFrame(for frame: NSRect) -> NSRect {
+        var persisted = frame
+        persisted.size.width = Layout.width
+        persisted.size.height = Layout.compactHeight
+        return persisted
+    }
 }

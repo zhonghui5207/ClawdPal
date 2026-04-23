@@ -2,38 +2,86 @@
 
 ClawdPet is a native macOS floating pet companion for local AI coding agents.
 
-The first version focuses on Claude Code hook events:
+It is currently a Ryan-first MVP for showing Claude Code and Codex activity as a small transparent desktop pet. All events stay local. The app does not upload telemetry or agent data.
 
-1. `ClawdPetHooks` reads hook JSON from stdin.
-2. The hook CLI forwards normalized events to a local Unix socket.
-3. `ClawdPetApp` receives events and maps them to one of six Clawd states.
-4. A transparent floating window renders the current Clawd and a small status bubble.
+## What It Does
 
-This project intentionally reimplements the bridge shape instead of copying GPL code from related projects.
+- Shows a transparent floating Clawd on the desktop.
+- Maps agent activity to six transparent PNG states:
+  - classic: idle
+  - hoodie: thinking / permission request
+  - explorer: reading / searching
+  - street: running commands / errors
+  - suit: editing code
+  - pajama: done
+- Receives Claude Code and Codex hook events through a local Unix socket.
+- Keeps hooks fail-open so agent work is not blocked when ClawdPet is closed.
+- Remembers floating window position and supports reset/quit through the right-click menu.
 
-## Run
+## Development Run
 
 ```sh
 swift run ClawdPetApp
 ```
 
-In another terminal:
+In another terminal, send a Claude-style test event:
 
 ```sh
-echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","session_id":"demo"}' | swift run ClawdPetHooks
+echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","session_id":"demo","tool_input":{"file_path":"Sources/App.swift"}}' | swift run ClawdPetHooks --source claude
 ```
 
-Install global Claude Code hooks after building:
+Send a Codex-style test event:
+
+```sh
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"demo","cwd":"/tmp/project","prompt":"continue implementation"}' | swift run ClawdPetHooks --source codex
+```
+
+## Install Hooks
+
+Install both Claude and Codex hooks:
 
 ```sh
 swift build
-swift run ClawdPetSetup install-claude
+swift run ClawdPetSetup install-all
 ```
 
-Remove them later:
+Install only one agent:
 
 ```sh
-swift run ClawdPetSetup uninstall-claude
+swift run ClawdPetSetup install-claude
+swift run ClawdPetSetup install-codex
+```
+
+Remove hooks:
+
+```sh
+swift run ClawdPetSetup uninstall-all
+```
+
+The setup tool backs up existing settings before writing. Uninstall only removes hooks whose command contains `ClawdPetHooks`, so existing tools such as vibe-island remain intact.
+
+## Local App Bundle
+
+Build a local double-clickable app:
+
+```sh
+scripts/build-app.sh
+open .build/ClawdPet.app
+```
+
+The local app bundle includes:
+
+- `ClawdPetApp`
+- `ClawdPetHooks`
+- `ClawdPetSetup`
+- Clawd PNG resources
+
+This is an unsigned local app bundle for personal use. It is not notarized and does not include auto-update.
+
+## Tests
+
+```sh
+swift build
 ```
 
 If `swift test` cannot find the local test framework while `xcode-select` points at CommandLineTools, run tests through the full Xcode toolchain:
@@ -42,11 +90,13 @@ If `swift test` cannot find the local test framework while `xcode-select` points
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-## Current MVP Scope
+## Current Scope
 
-- Floating transparent AppKit window
-- Six sprite states from the provided sprite sheet
-- Claude Code hook JSON decoder
+- Native SwiftUI + AppKit floating window
+- Claude Code hook decoder and installer
+- Codex hook decoder and installer
 - Unix socket bridge
-- Hook CLI fail-open behavior
-- Focused unit tests for mood mapping and decoder behavior
+- Local `.app` builder
+- Focused unit tests for hook decoding, settings merge/uninstall, and bridge envelope encoding
+
+See [ROADMAP.md](ROADMAP.md) for the longer-term plan.

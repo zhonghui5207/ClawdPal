@@ -1,58 +1,17 @@
 import Foundation
 
-public struct ClaudeHookInstallResult: Equatable, Sendable {
-    public var settingsPath: String
-    public var backupPath: String?
-    public var installedEvents: [String]
-
-    public init(settingsPath: String, backupPath: String?, installedEvents: [String]) {
-        self.settingsPath = settingsPath
-        self.backupPath = backupPath
-        self.installedEvents = installedEvents
-    }
-}
-
-public enum ClaudeHookSettingsError: Error, LocalizedError {
-    case hookBinaryMissing(String)
-    case invalidSettingsRoot
-    case invalidHooksRoot
-
-    public var errorDescription: String? {
-        switch self {
-        case .hookBinaryMissing(let path):
-            return "Hook binary does not exist or is not executable: \(path)"
-        case .invalidSettingsRoot:
-            return "Claude settings JSON must be an object."
-        case .invalidHooksRoot:
-            return "Claude settings hooks field must be an object."
-        }
-    }
-}
-
-public enum ClaudeHookSettings {
+public enum CodexHookSettings {
     public static let clawdPetMarker = "ClawdPetHooks"
 
     public static let defaultEvents = [
-        "UserPromptSubmit",
-        "PreToolUse",
-        "PostToolUse",
-        "PostToolUseFailure",
-        "PermissionRequest",
-        "PermissionDenied",
-        "Notification",
-        "SubagentStart",
-        "SubagentStop",
-        "TaskCreated",
-        "TaskCompleted",
-        "CwdChanged",
-        "Stop",
-        "StopFailure",
         "SessionStart",
-        "SessionEnd"
+        "UserPromptSubmit",
+        "PermissionRequest",
+        "Stop"
     ]
 
     public static var defaultSettingsPath: String {
-        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.claude/settings.json"
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/.codex/hooks.json"
     }
 
     public static func install(
@@ -70,7 +29,6 @@ public enum ClaudeHookSettings {
         }
 
         let backupPath = try backupIfNeeded(settingsPath)
-
         let hooksValue = root["hooks"] ?? .object([:])
         guard case .object(var hooksObject) = hooksValue else {
             throw ClaudeHookSettingsError.invalidHooksRoot
@@ -79,7 +37,7 @@ public enum ClaudeHookSettings {
         for event in events {
             let existingGroups = hooksObject[event]?.arrayValue ?? []
             let cleanedGroups = existingGroups.filter { !containsClawdPetHook($0) }
-            hooksObject[event] = .array(cleanedGroups + [hookGroup(for: event, hookBinaryPath: hookBinaryPath)])
+            hooksObject[event] = .array(cleanedGroups + [hookGroup(hookBinaryPath: hookBinaryPath)])
         }
 
         root["hooks"] = .object(hooksObject)
@@ -156,34 +114,16 @@ public enum ClaudeHookSettings {
         return true
     }
 
-    private static func hookGroup(for event: String, hookBinaryPath: String) -> JSONValue {
-        var group: [String: JSONValue] = [
+    private static func hookGroup(hookBinaryPath: String) -> JSONValue {
+        .object([
             "hooks": .array([
                 .object([
                     "type": .string("command"),
-                    "command": .string("\(quotedShellPath(hookBinaryPath)) --source claude"),
-                    "async": .bool(true),
+                    "command": .string("\(quotedShellPath(hookBinaryPath)) --source codex"),
                     "timeout": .number(5)
                 ])
             ])
-        ]
-
-        if supportsMatcher(event) {
-            group["matcher"] = .string("*")
-        }
-
-        return .object(group)
-    }
-
-    private static func supportsMatcher(_ event: String) -> Bool {
-        switch event {
-        case "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied":
-            return true
-        case "SessionStart", "SessionEnd", "Notification", "SubagentStart", "SubagentStop", "PreCompact", "PostCompact", "StopFailure", "UserPromptExpansion", "Elicitation", "ElicitationResult", "FileChanged", "InstructionsLoaded":
-            return true
-        default:
-            return false
-        }
+        ])
     }
 
     private static func containsClawdPetHook(_ group: JSONValue) -> Bool {

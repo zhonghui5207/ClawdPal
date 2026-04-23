@@ -1,7 +1,25 @@
 import AppKit
 import SwiftUI
 
-final class DraggableHostingView<Content: View>: NSHostingView<Content> {
+struct PetInteractionView: NSViewRepresentable {
+    var onClick: () -> Void
+
+    func makeNSView(context: Context) -> InteractionNSView {
+        let view = InteractionNSView()
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: InteractionNSView, context: Context) {
+        nsView.onClick = onClick
+    }
+}
+
+final class InteractionNSView: NSView {
+    var onClick: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         guard let window else {
             super.mouseDown(with: event)
@@ -38,7 +56,7 @@ final class DraggableHostingView<Content: View>: NSHostingView<Content> {
                 if didDrag {
                     NotificationCenter.default.post(name: .clawdPetDragEnded, object: window)
                 } else {
-                    super.mouseDown(with: event)
+                    onClick?()
                 }
                 return
             default:

@@ -12,6 +12,7 @@ struct ClaudeHookDecoderTests {
         let event = try ClaudeHookDecoder.decodeEvent(from: json)
 
         #expect(event.kind == .reading)
+        #expect(event.hookEventName == "PreToolUse")
         #expect(event.toolName == "Read")
         #expect(event.sessionID == "demo")
         #expect(event.workingDirectory == "/tmp/project")
@@ -38,6 +39,7 @@ struct ClaudeHookDecoderTests {
         let event = try ClaudeHookDecoder.decodeEvent(from: json)
 
         #expect(event.kind == .completed)
+        #expect(event.hookEventName == "Stop")
     }
 
     @Test
@@ -49,6 +51,7 @@ struct ClaudeHookDecoderTests {
         let event = try ClaudeHookDecoder.decodeEvent(from: json)
 
         #expect(event.kind == .thinking)
+        #expect(event.hookEventName == "UserPromptSubmit")
         #expect(event.message == "Prompt: continue building the floating pet")
     }
 }

@@ -27,9 +27,9 @@ public enum ClaudeHookDecoder {
         case "UserPromptSubmit", "Notification":
             kind = .thinking
         case "PermissionRequest":
-            kind = .thinking
+            kind = .permissionRequest
         case "PermissionDenied":
-            kind = .thinking
+            kind = .error
         case "SessionStart":
             kind = .idle
         case "SessionEnd":
@@ -39,7 +39,7 @@ public enum ClaudeHookDecoder {
         case "PostToolUse":
             kind = .thinking
         case "PostToolUseFailure":
-            kind = .thinking
+            kind = .error
         case "SubagentStart", "TaskCreated":
             kind = .thinking
         case "TaskCompleted":
@@ -49,13 +49,14 @@ public enum ClaudeHookDecoder {
         case "Stop", "SubagentStop":
             kind = .completed
         case "StopFailure":
-            kind = .thinking
+            kind = .error
         default:
             kind = toolName.map(kindForTool) ?? .unknown
         }
 
         return AgentEvent(
             kind: kind,
+            hookEventName: hookName.isEmpty ? nil : hookName,
             toolName: toolName,
             message: summary(from: payload, fallbackKind: kind),
             sessionID: payload.sessionID,

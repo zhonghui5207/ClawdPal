@@ -23,6 +23,10 @@ public enum PetMoodMapper {
             return PetPresentation(mood: .street, bubbleText: toolText(event, fallback: "Running command..."))
         case .editingCode:
             return PetPresentation(mood: .suit, bubbleText: toolText(event, fallback: "Editing code..."))
+        case .permissionRequest:
+            return PetPresentation(mood: .hoodie, bubbleText: event.message ?? "Permission requested")
+        case .error:
+            return PetPresentation(mood: .street, bubbleText: event.message ?? "Agent error")
         case .completed:
             return PetPresentation(mood: .pajama, bubbleText: event.message ?? "Done.")
         case .unknown:
