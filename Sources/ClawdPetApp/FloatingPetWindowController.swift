@@ -103,7 +103,7 @@ final class FloatingPetWindowController {
 
     @objc private func resetPosition() {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.windowFrame)
-        window.setFrame(Self.defaultFrame(), display: true, animate: true)
+        window.setFrame(Self.defaultFrame(), display: true, animate: false)
         saveFrame()
     }
 
@@ -165,7 +165,7 @@ final class FloatingPetWindowController {
         targetFrame = Self.clampedFrame(targetFrame)
 
         isAdjustingFrame = true
-        window.setFrame(targetFrame, display: true, animate: true)
+        window.setFrame(targetFrame, display: true, animate: false)
         isAdjustingFrame = false
         saveFrame()
     }

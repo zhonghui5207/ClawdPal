@@ -16,8 +16,9 @@ struct PetOverlayView: View {
         static let compactHeight: CGFloat = 260
         static let fallbackExpandedHeight: CGFloat = 420
         static let spriteHeight: CGFloat = 150
-        static let openSpacing: CGFloat = 2
-        static let openVerticalPadding: CGFloat = 8
+        static let stackSpacing: CGFloat = 4
+        static let verticalPadding: CGFloat = 8
+        static let panelFadeDuration: CGFloat = 0.12
     }
 
     @ObservedObject var appModel: AppModel
@@ -27,7 +28,7 @@ struct PetOverlayView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(spacing: isPanelOpen ? 2 : 6) {
+            VStack(spacing: Layout.stackSpacing) {
                 if isPanelOpen {
                     ControlPanelView(appModel: appModel)
                         .background(
@@ -35,7 +36,7 @@ struct PetOverlayView: View {
                                 Color.clear.preference(key: PanelHeightKey.self, value: geometry.size.height)
                             }
                         )
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(.opacity)
                 }
 
                 if !isPanelOpen {
@@ -48,14 +49,14 @@ struct PetOverlayView: View {
                     .contentShape(Rectangle())
                     .overlay(
                         PetInteractionView {
-                            withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                            withAnimation(.easeOut(duration: Layout.panelFadeDuration)) {
                                 isPanelOpen.toggle()
                             }
                         }
                     )
                     .help("Open ClawdPet panel")
             }
-            .padding(.vertical, isPanelOpen ? 8 : 12)
+            .padding(.vertical, Layout.verticalPadding)
             .padding(.horizontal, 16)
         }
         .frame(
@@ -111,8 +112,8 @@ struct PetOverlayView: View {
         guard isPanelOpen else { return Layout.compactHeight }
         let measuredHeight = measuredPanelHeight
             + Layout.spriteHeight
-            + Layout.openSpacing
-            + (Layout.openVerticalPadding * 2)
+            + Layout.stackSpacing
+            + (Layout.verticalPadding * 2)
         return max(Layout.fallbackExpandedHeight, ceil(measuredHeight))
     }
 }
