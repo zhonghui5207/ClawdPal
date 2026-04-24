@@ -1,8 +1,8 @@
-# ClawdPet Roadmap
+# ClawdPal Roadmap
 
 ## Product Direction
 
-ClawdPet is an AI coding agent work companion, not a generic desktop pet and not a heavy agent console. Its job is to make local Claude Code and Codex activity visible, calm, and easy to return to.
+ClawdPal is an AI coding agent work companion, not a generic desktop pet and not a heavy agent console. Its job is to make local Claude Code and Codex activity visible, calm, and easy to return to.
 
 The first user is Ryan. Public distribution, notarization, auto-update, and polished onboarding come later.
 
@@ -34,7 +34,7 @@ The first user is Ryan. Public distribution, notarization, auto-update, and poli
 - Add subtle animations for idle, thinking, running, editing, and done.
 - Improve short bubble copy while keeping it concise.
 - Add quiet mode for lower visual noise.
-- Support a local skin/resource directory for replacing clawd artwork.
+- Support a local skin/resource directory for replacing pet artwork.
 
 ## Phase 4: Small Shareable Build
 

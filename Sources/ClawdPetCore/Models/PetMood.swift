@@ -11,17 +11,17 @@ public enum PetMood: String, CaseIterable, Codable, Equatable, Sendable {
     public var displayName: String {
         switch self {
         case .classic:
-            return "Classic Clawd"
+            return "Classic"
         case .hoodie:
-            return "Hoodie Clawd"
+            return "Hoodie"
         case .street:
-            return "Street Clawd"
+            return "Street"
         case .suit:
-            return "Suit Clawd"
+            return "Suit"
         case .explorer:
-            return "Explorer Clawd"
+            return "Explorer"
         case .pajama:
-            return "Pajama Clawd"
+            return "Pajama"
         }
     }
 }

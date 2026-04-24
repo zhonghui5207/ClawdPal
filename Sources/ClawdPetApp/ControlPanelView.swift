@@ -30,7 +30,7 @@ struct ControlPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("ClawdPet")
+                Text("ClawdPal")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                 Spacer()
                 Button {
@@ -41,7 +41,7 @@ struct ControlPanelView: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
-                .help("Quit ClawdPet")
+                .help("Quit ClawdPal")
             }
 
             if !appModel.sourceSections.isEmpty {

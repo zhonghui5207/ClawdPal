@@ -323,8 +323,8 @@ final class AppModel: ObservableObject {
 
     var hookPrimaryActionHelp: String {
         hookStatus.isFullyConnected
-            ? "Rewrite ClawdPet hook entries for Claude and Codex"
-            : "Connect Claude and Codex activity to ClawdPet"
+            ? "Rewrite ClawdPal hook entries for Claude and Codex"
+            : "Connect Claude and Codex activity to ClawdPal"
     }
 
     var claudeHookStateText: String {

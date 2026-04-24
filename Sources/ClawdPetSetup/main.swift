@@ -66,7 +66,7 @@ func inferredHookPath() -> String {
 
 func printUsage() {
     print("""
-    ClawdPetSetup
+    ClawdPal Setup
 
     Commands:
       install-claude [--settings ~/.claude/settings.json] [--hook /path/to/ClawdPetHooks]
@@ -95,7 +95,7 @@ do {
             settingsPath: options.settingsPath,
             hookBinaryPath: hookPath
         )
-        print("Installed ClawdPet Claude hooks")
+        print("Installed ClawdPal Claude hooks")
         print("Settings: \(result.settingsPath)")
         if let backupPath = result.backupPath {
             print("Backup: \(backupPath)")
@@ -104,7 +104,7 @@ do {
         print("Events: \(result.installedEvents.joined(separator: ", "))")
     case .uninstallClaude:
         let result = try ClaudeHookSettings.uninstall(settingsPath: options.settingsPath)
-        print("Removed ClawdPet Claude hooks")
+        print("Removed ClawdPal Claude hooks")
         print("Settings: \(result.settingsPath)")
         if let backupPath = result.backupPath {
             print("Backup: \(backupPath)")
@@ -119,7 +119,7 @@ do {
             settingsPath: settingsPath,
             hookBinaryPath: hookPath
         )
-        print("Installed ClawdPet Codex hooks")
+        print("Installed ClawdPal Codex hooks")
         print("Settings: \(result.settingsPath)")
         if let backupPath = result.backupPath {
             print("Backup: \(backupPath)")
@@ -131,7 +131,7 @@ do {
             ? CodexHookSettings.defaultSettingsPath
             : options.settingsPath
         let result = try CodexHookSettings.uninstall(settingsPath: settingsPath)
-        print("Removed ClawdPet Codex hooks")
+        print("Removed ClawdPal Codex hooks")
         print("Settings: \(result.settingsPath)")
         if let backupPath = result.backupPath {
             print("Backup: \(backupPath)")
@@ -141,7 +141,7 @@ do {
         let hookPath = options.hookPath ?? inferredHookPath()
         let claude = try ClaudeHookSettings.install(hookBinaryPath: hookPath)
         let codex = try CodexHookSettings.install(hookBinaryPath: hookPath)
-        print("Installed ClawdPet hooks")
+        print("Installed ClawdPal hooks")
         print("Claude settings: \(claude.settingsPath)")
         if let backupPath = claude.backupPath {
             print("Claude backup: \(backupPath)")
@@ -154,7 +154,7 @@ do {
     case .uninstallAll:
         let claude = try ClaudeHookSettings.uninstall()
         let codex = try CodexHookSettings.uninstall()
-        print("Removed ClawdPet hooks")
+        print("Removed ClawdPal hooks")
         print("Claude settings: \(claude.settingsPath)")
         if let backupPath = claude.backupPath {
             print("Claude backup: \(backupPath)")
@@ -169,6 +169,6 @@ do {
         printUsage()
     }
 } catch {
-    fputs("ClawdPetSetup error: \(error.localizedDescription)\n", stderr)
+    fputs("ClawdPal setup error: \(error.localizedDescription)\n", stderr)
     exit(1)
 }

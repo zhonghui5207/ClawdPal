@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 swift build
 
 BIN_DIR="$(swift build --show-bin-path)"
-APP_DIR="$ROOT_DIR/.build/ClawdPet.app"
+APP_DIR="$ROOT_DIR/.build/ClawdPal.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -34,11 +34,11 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key>
   <string>ClawdPetApp</string>
   <key>CFBundleIdentifier</key>
-  <string>studio.lovexai.ClawdPet</string>
+  <string>studio.lovexai.ClawdPal</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>ClawdPet</string>
+  <string>ClawdPal</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

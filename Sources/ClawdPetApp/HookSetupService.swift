@@ -108,7 +108,7 @@ enum SetupError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingExecutable:
-            return "ClawdPetSetup executable was not found."
+            return "ClawdPal setup executable was not found."
         case .failed(let output):
             return output.trimmingCharacters(in: .whitespacesAndNewlines)
         }

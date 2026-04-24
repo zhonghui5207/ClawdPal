@@ -54,7 +54,7 @@ struct PetOverlayView: View {
                             }
                         }
                     )
-                    .help("Open ClawdPet panel")
+                    .help("Open ClawdPal panel")
             }
             .padding(.vertical, Layout.verticalPadding)
             .padding(.horizontal, 16)

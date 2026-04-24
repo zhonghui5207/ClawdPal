@@ -36,6 +36,6 @@ do {
     let envelope = BridgeEnvelope(source: envelopeSource, event: event)
     try BridgeClient().send(envelope)
 } catch {
-    // Agent hooks should fail open. The agent must keep running even when ClawdPet is closed.
-    fputs("ClawdPetHooks warning: \(error)\n", stderr)
+    // Agent hooks should fail open. The agent must keep running even when ClawdPal is closed.
+    fputs("ClawdPal hook warning: \(error)\n", stderr)
 }
