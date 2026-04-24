@@ -698,6 +698,9 @@ final class AppModel: ObservableObject {
                 if source == "Codex", codexSubagentParents[sessionID] != nil {
                     continue
                 }
+                if source == "Codex", shouldHideCodexTopLevelSession(tracked) {
+                    continue
+                }
 
                 let key = sessionKey(source: source, sessionID: sessionID)
                 if let archivedAt = archivedSessions[key] {
@@ -737,6 +740,9 @@ final class AppModel: ObservableObject {
                 var nextTracked = tracked
                 nextTracked.subagents = tracked.subagents.filter { _, subagent in
                     now.timeIntervalSince(subagent.updatedAt) < lifetime(forSubagent: subagent)
+                }
+                if source == "Codex", shouldHideCodexTopLevelSession(nextTracked) {
+                    continue
                 }
                 if !nextTracked.subagents.isEmpty {
                     filtered[sessionID] = nextTracked
@@ -1026,10 +1032,39 @@ final class AppModel: ObservableObject {
             return SourceSection(
                 source: source,
                 count: displays.count,
-                headline: displays.first?.taskTitle ?? displays.first?.eventText ?? "Watching",
+                headline: sectionHeadline(for: displays),
                 sessions: displays
             )
         }
+    }
+
+    private func shouldHideCodexTopLevelSession(_ tracked: TrackedSession) -> Bool {
+        guard tracked.subagents.isEmpty else {
+            return false
+        }
+
+        switch tracked.event.kind {
+        case .completed, .idle, .unknown:
+            return true
+        case .thinking:
+            let line = tracked.latestUserLine ?? cleanedMessage(tracked.event.message, prefix: "Prompt:")
+            if let line, line.hasPrefix("You are a helpful assist") || line.hasPrefix("You are Codex") {
+                return true
+            }
+            return false
+        case .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+            return false
+        }
+    }
+
+    private func sectionHeadline(for displays: [SessionDisplay]) -> String {
+        guard let first = displays.first else {
+            return "Watching"
+        }
+        if !first.subagents.isEmpty {
+            return first.subagents.count == 1 ? "1 subagent" : "\(first.subagents.count) subagents"
+        }
+        return first.taskTitle ?? first.eventText
     }
 
     private func sessionDisplay(
@@ -1047,7 +1082,7 @@ final class AppModel: ObservableObject {
         return SessionDisplay(
             source: source,
             sessionID: sessionID,
-            taskTitle: tracked.taskTitle,
+            taskTitle: sessionTitle(for: tracked, subagents: subagents),
             latestUserLine: tracked.latestUserLine,
             subagents: subagents,
             workspaceName: workspaceName(for: tracked.event.workingDirectory),
@@ -1061,6 +1096,16 @@ final class AppModel: ObservableObject {
             kind: effectiveKind,
             isActive: isActive
         )
+    }
+
+    private func sessionTitle(for tracked: TrackedSession, subagents: [SubagentDisplay]) -> String? {
+        if subagents.count > 1 {
+            return "\(subagents.count) subagents"
+        }
+        if let subagent = subagents.first {
+            return subagent.taskTitle
+        }
+        return tracked.taskTitle
     }
 
     private func effectiveKind(for tracked: TrackedSession) -> AgentEventKind {
