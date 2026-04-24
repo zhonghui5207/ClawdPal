@@ -1,4 +1,4 @@
-import ClawdPetCore
+import ClawdPalCore
 import Foundation
 
 @MainActor
@@ -110,7 +110,7 @@ final class AppModel: ObservableObject {
     private let terminalJumpService = TerminalJumpService()
     private let hookSetupService = HookSetupService()
     private let codexTranscriptMonitor = CodexTranscriptMonitor()
-    private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPet.codex-transcripts", qos: .utility)
+    private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPal.codex-transcripts", qos: .utility)
     private let focusHoldDuration: TimeInterval = 5
     private let subagentLifetime: TimeInterval = 30 * 60
     private let completedSubagentLifetime: TimeInterval = 2 * 60
@@ -164,7 +164,7 @@ final class AppModel: ObservableObject {
     }
 
     func resetWindowPosition() {
-        NotificationCenter.default.post(name: .clawdPetResetWindowPosition, object: nil)
+        NotificationCenter.default.post(name: .clawdPalResetWindowPosition, object: nil)
     }
 
     func installHooks() {
@@ -1574,7 +1574,7 @@ final class AppModel: ObservableObject {
 }
 
 extension Notification.Name {
-    static let clawdPetDragEnded = Notification.Name("clawdPetDragEnded")
-    static let clawdPetResetWindowPosition = Notification.Name("clawdPetResetWindowPosition")
-    static let clawdPetSetPanelOpen = Notification.Name("clawdPetSetPanelOpen")
+    static let clawdPalDragEnded = Notification.Name("clawdPalDragEnded")
+    static let clawdPalResetWindowPosition = Notification.Name("clawdPalResetWindowPosition")
+    static let clawdPalSetPanelOpen = Notification.Name("clawdPalSetPanelOpen")
 }

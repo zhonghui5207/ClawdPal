@@ -3,38 +3,38 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClawdPet",
+    name: "ClawdPal",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "ClawdPetApp", targets: ["ClawdPetApp"]),
-        .executable(name: "ClawdPetHooks", targets: ["ClawdPetHooks"]),
-        .executable(name: "ClawdPetSetup", targets: ["ClawdPetSetup"]),
-        .library(name: "ClawdPetCore", targets: ["ClawdPetCore"])
+        .executable(name: "ClawdPalApp", targets: ["ClawdPalApp"]),
+        .executable(name: "ClawdPalHooks", targets: ["ClawdPalHooks"]),
+        .executable(name: "ClawdPalSetup", targets: ["ClawdPalSetup"]),
+        .library(name: "ClawdPalCore", targets: ["ClawdPalCore"])
     ],
     targets: [
         .target(
-            name: "ClawdPetCore"
+            name: "ClawdPalCore"
         ),
         .executableTarget(
-            name: "ClawdPetApp",
-            dependencies: ["ClawdPetCore"],
+            name: "ClawdPalApp",
+            dependencies: ["ClawdPalCore"],
             resources: [
                 .copy("Resources")
             ]
         ),
         .executableTarget(
-            name: "ClawdPetHooks",
-            dependencies: ["ClawdPetCore"]
+            name: "ClawdPalHooks",
+            dependencies: ["ClawdPalCore"]
         ),
         .executableTarget(
-            name: "ClawdPetSetup",
-            dependencies: ["ClawdPetCore"]
+            name: "ClawdPalSetup",
+            dependencies: ["ClawdPalCore"]
         ),
         .testTarget(
-            name: "ClawdPetCoreTests",
-            dependencies: ["ClawdPetCore"]
+            name: "ClawdPalCoreTests",
+            dependencies: ["ClawdPalCore"]
         )
     ]
 )

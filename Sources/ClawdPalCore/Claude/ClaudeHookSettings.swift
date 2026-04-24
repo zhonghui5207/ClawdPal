@@ -30,7 +30,7 @@ public enum ClaudeHookSettingsError: Error, LocalizedError {
 }
 
 public enum ClaudeHookSettings {
-    public static let clawdPetMarker = "ClawdPetHooks"
+    public static let clawdPalMarker = "ClawdPalHooks"
 
     public static let defaultEvents = [
         "UserPromptSubmit",
@@ -78,7 +78,7 @@ public enum ClaudeHookSettings {
 
         for event in events {
             let existingGroups = hooksObject[event]?.arrayValue ?? []
-            let cleanedGroups = existingGroups.filter { !containsClawdPetHook($0) }
+            let cleanedGroups = existingGroups.filter { !containsClawdPalHook($0) }
             hooksObject[event] = .array(cleanedGroups + [hookGroup(for: event, hookBinaryPath: hookBinaryPath)])
         }
 
@@ -107,7 +107,7 @@ public enum ClaudeHookSettings {
         var touchedEvents: [String] = []
         for (event, value) in hooksObject {
             guard let groups = value.arrayValue else { continue }
-            let cleanedGroups = groups.filter { !containsClawdPetHook($0) }
+            let cleanedGroups = groups.filter { !containsClawdPalHook($0) }
             if cleanedGroups.count != groups.count {
                 touchedEvents.append(event)
                 if cleanedGroups.isEmpty {
@@ -148,7 +148,7 @@ public enum ClaudeHookSettings {
 
         for event in events {
             guard let groups = hooksObject[event]?.arrayValue,
-                  groups.contains(where: containsClawdPetHook) else {
+                  groups.contains(where: containsClawdPalHook) else {
                 return false
             }
         }
@@ -186,7 +186,7 @@ public enum ClaudeHookSettings {
         }
     }
 
-    private static func containsClawdPetHook(_ group: JSONValue) -> Bool {
+    private static func containsClawdPalHook(_ group: JSONValue) -> Bool {
         guard let groupObject = group.objectValue,
               let hookValues = groupObject["hooks"]?.arrayValue else {
             return false
@@ -197,7 +197,7 @@ public enum ClaudeHookSettings {
                   case .string(let command)? = hookObject["command"] else {
                 return false
             }
-            return command.contains(clawdPetMarker)
+            return command.contains(clawdPalMarker)
         }
     }
 
@@ -232,7 +232,7 @@ public enum ClaudeHookSettings {
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let backupPath = "\(path).clawdpet-backup-\(formatter.string(from: Date()))-\(UUID().uuidString.prefix(8))"
+        let backupPath = "\(path).clawdpal-backup-\(formatter.string(from: Date()))-\(UUID().uuidString.prefix(8))"
         try FileManager.default.copyItem(atPath: path, toPath: backupPath)
         return backupPath
     }

@@ -15,13 +15,13 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
-cp "$BIN_DIR/ClawdPetApp" "$MACOS_DIR/ClawdPetApp"
-cp "$BIN_DIR/ClawdPetHooks" "$MACOS_DIR/ClawdPetHooks"
-cp "$BIN_DIR/ClawdPetSetup" "$MACOS_DIR/ClawdPetSetup"
+cp "$BIN_DIR/ClawdPalApp" "$MACOS_DIR/ClawdPalApp"
+cp "$BIN_DIR/ClawdPalHooks" "$MACOS_DIR/ClawdPalHooks"
+cp "$BIN_DIR/ClawdPalSetup" "$MACOS_DIR/ClawdPalSetup"
 
-if [ -d "$BIN_DIR/ClawdPet_ClawdPetApp.bundle" ]; then
-  cp -R "$BIN_DIR/ClawdPet_ClawdPetApp.bundle" "$APP_DIR/ClawdPet_ClawdPetApp.bundle"
-  cp -R "$BIN_DIR/ClawdPet_ClawdPetApp.bundle/Resources" "$RESOURCES_DIR/ClawdPetResources"
+if [ -d "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" ]; then
+  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" "$APP_DIR/ClawdPal_ClawdPalApp.bundle"
+  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle/Resources" "$RESOURCES_DIR/ClawdPalResources"
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
@@ -32,7 +32,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>ClawdPetApp</string>
+  <string>ClawdPalApp</string>
   <key>CFBundleIdentifier</key>
   <string>studio.lovexai.ClawdPal</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -53,6 +53,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-chmod +x "$MACOS_DIR/ClawdPetApp" "$MACOS_DIR/ClawdPetHooks" "$MACOS_DIR/ClawdPetSetup"
+chmod +x "$MACOS_DIR/ClawdPalApp" "$MACOS_DIR/ClawdPalHooks" "$MACOS_DIR/ClawdPalSetup"
 
 echo "Built $APP_DIR"

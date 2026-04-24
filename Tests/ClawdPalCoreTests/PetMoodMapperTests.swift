@@ -1,5 +1,5 @@
 import Testing
-@testable import ClawdPetCore
+@testable import ClawdPalCore
 
 struct PetMoodMapperTests {
     @Test

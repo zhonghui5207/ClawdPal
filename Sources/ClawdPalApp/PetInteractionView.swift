@@ -54,7 +54,7 @@ final class InteractionNSView: NSView {
                 window.setFrameOrigin(newOrigin)
             case .leftMouseUp:
                 if didDrag {
-                    NotificationCenter.default.post(name: .clawdPetDragEnded, object: window)
+                    NotificationCenter.default.post(name: .clawdPalDragEnded, object: window)
                 } else {
                     onClick?()
                 }

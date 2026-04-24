@@ -1,4 +1,4 @@
-import ClawdPetCore
+import ClawdPalCore
 import Foundation
 
 func sourceArgument(from arguments: [String]) -> String {

@@ -1,4 +1,4 @@
-import ClawdPetCore
+import ClawdPalCore
 import AppKit
 import SwiftUI
 
@@ -73,7 +73,7 @@ struct PetOverlayView: View {
         )
         .onChange(of: isPanelOpen) { isOpen in
             NotificationCenter.default.post(
-                name: .clawdPetSetPanelOpen,
+                name: .clawdPalSetPanelOpen,
                 object: nil,
                 userInfo: ["isOpen": isOpen, "preferredHeight": currentHeight]
             )
@@ -83,7 +83,7 @@ struct PetOverlayView: View {
             measuredPanelHeight = newHeight
             guard isPanelOpen else { return }
             NotificationCenter.default.post(
-                name: .clawdPetSetPanelOpen,
+                name: .clawdPalSetPanelOpen,
                 object: nil,
                 userInfo: ["isOpen": true, "preferredHeight": currentHeight]
             )

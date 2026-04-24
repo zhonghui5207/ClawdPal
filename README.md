@@ -8,8 +8,6 @@ ClawdPal is a native macOS floating desktop buddy for AI coding sessions. It sit
 
 The app is local-first. Hook events are sent through a local Unix socket, transcript parsing happens on your machine, and ClawdPal does not upload telemetry or agent data.
 
-> Note: the product name is ClawdPal. Some internal Swift targets and commands still use the original `ClawdPet` naming while the project is being prepared for a public release.
-
 ## Features
 
 - Floating transparent desktop pet for macOS.
@@ -91,42 +89,44 @@ You can also install hooks from the command line.
 Install hooks for both Claude Code and Codex:
 
 ```sh
-swift run ClawdPetSetup install-all
+swift run ClawdPalSetup install-all
 ```
 
 Install only one integration:
 
 ```sh
-swift run ClawdPetSetup install-claude
-swift run ClawdPetSetup install-codex
+swift run ClawdPalSetup install-claude
+swift run ClawdPalSetup install-codex
 ```
 
 Remove installed hooks:
 
 ```sh
-swift run ClawdPetSetup uninstall-all
+swift run ClawdPalSetup uninstall-all
 ```
 
-The setup tool backs up existing settings before writing. Uninstall only removes hooks whose command contains `ClawdPetHooks`, so unrelated hooks are left intact.
+The setup tool backs up existing settings before writing. Uninstall only removes hooks whose command contains `ClawdPalHooks`, so unrelated hooks are left intact.
+
+The hook command is fail-open: if ClawdPal is closed or unreachable, Claude Code and Codex keep running.
 
 ## Development
 
 Run the app directly:
 
 ```sh
-swift run ClawdPetApp
+swift run ClawdPalApp
 ```
 
 Send a Claude-style test event:
 
 ```sh
-echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","session_id":"demo","tool_input":{"file_path":"Sources/App.swift"}}' | swift run ClawdPetHooks --source claude
+echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","session_id":"demo","tool_input":{"file_path":"Sources/App.swift"}}' | swift run ClawdPalHooks --source claude
 ```
 
 Send a Codex-style test event:
 
 ```sh
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"demo","cwd":"/tmp/project","prompt":"continue implementation"}' | swift run ClawdPetHooks --source codex
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"demo","cwd":"/tmp/project","prompt":"continue implementation"}' | swift run ClawdPalHooks --source codex
 ```
 
 Build the local app bundle:
@@ -137,9 +137,9 @@ scripts/build-app.sh
 
 The generated bundle includes:
 
-- `ClawdPetApp`
-- `ClawdPetHooks`
-- `ClawdPetSetup`
+- `ClawdPalApp`
+- `ClawdPalHooks`
+- `ClawdPalSetup`
 - bundled pet PNG assets
 
 ## Testing
@@ -162,14 +162,21 @@ If `swift test` cannot find the `Testing` module while `xcode-select` points at 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
+Create and inspect the app bundle:
+
+```sh
+scripts/build-app.sh
+open .build/ClawdPal.app
+```
+
 ## Architecture
 
 ClawdPal is split into a few small Swift targets:
 
-- `ClawdPetApp`: native macOS floating pet app and session panel.
-- `ClawdPetHooks`: hook entrypoint that reads JSON from stdin and forwards events locally.
-- `ClawdPetSetup`: installs, repairs, and removes Claude Code / Codex hook settings.
-- `ClawdPetCore`: shared models, hook decoders, settings helpers, transcript parser, and local bridge transport.
+- `ClawdPalApp`: native macOS floating pet app and session panel.
+- `ClawdPalHooks`: hook entrypoint that reads JSON from stdin and forwards events locally.
+- `ClawdPalSetup`: installs, repairs, and removes Claude Code / Codex hook settings.
+- `ClawdPalCore`: shared models, hook decoders, settings helpers, transcript parser, and local bridge transport.
 
 Runtime flow:
 
@@ -177,13 +184,13 @@ Runtime flow:
 Claude Code / Codex
         |
         v
-ClawdPetHooks
+ClawdPalHooks
         |
         v
 Local Unix socket bridge
         |
         v
-ClawdPetApp
+ClawdPalApp
         |
         v
 Floating pet + session panel
@@ -209,7 +216,6 @@ ClawdPal is an early local-first macOS project. The current build is usable for 
 
 Planned public-release work includes:
 
-- product name cleanup across internal target and command names
 - signed release packaging
 - screenshots and demo media
 - clearer onboarding for non-developers

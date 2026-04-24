@@ -1,5 +1,5 @@
 import AppKit
-import ClawdPetCore
+import ClawdPalCore
 import SwiftUI
 
 private enum ControlPanelPalette {

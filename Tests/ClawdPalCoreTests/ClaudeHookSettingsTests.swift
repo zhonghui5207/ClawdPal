@@ -1,24 +1,25 @@
 import Foundation
 import Testing
-@testable import ClawdPetCore
+@testable import ClawdPalCore
 
-struct CodexHookSettingsTests {
+struct ClaudeHookSettingsTests {
     @Test
-    func installAddsClawdPetHooksWithoutRemovingVibeIslandHooks() throws {
+    func installAddsClawdPalHooksWithoutRemovingExistingHooks() throws {
         let directory = try temporaryDirectory()
-        let settingsPath = directory.appendingPathComponent("hooks.json").path
+        let settingsPath = directory.appendingPathComponent("settings.json").path
         let hookPath = try fakeExecutable(in: directory)
 
         try """
         {
+          "theme": "dark",
           "hooks": {
-            "UserPromptSubmit": [
+            "PreToolUse": [
               {
+                "matcher": "Bash",
                 "hooks": [
                   {
                     "type": "command",
-                    "command": "'/Users/ryan/.vibe-island/bin/vibe-island-bridge' --source codex",
-                    "timeout": 5
+                    "command": "/tmp/existing-hook"
                   }
                 ]
               }
@@ -27,61 +28,64 @@ struct CodexHookSettingsTests {
         }
         """.data(using: .utf8)!.write(to: URL(fileURLWithPath: settingsPath))
 
-        _ = try CodexHookSettings.install(
+        let result = try ClaudeHookSettings.install(
             settingsPath: settingsPath,
             hookBinaryPath: hookPath,
-            events: ["UserPromptSubmit"]
+            events: ["PreToolUse", "Stop"]
         )
 
+        #expect(result.backupPath != nil)
         let settings = try readSettings(settingsPath)
         let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
-        let groups = try #require(hooks["UserPromptSubmit"]?.arrayValue)
+        let preToolGroups = try #require(hooks["PreToolUse"]?.arrayValue)
+        let stopGroups = try #require(hooks["Stop"]?.arrayValue)
 
-        #expect(groups.count == 2)
-        #expect(groups.contains { containsCommand($0, "vibe-island-bridge") })
-        #expect(groups.contains { containsCommand($0, "ClawdPetHooks") })
+        #expect(preToolGroups.count == 2)
+        #expect(stopGroups.count == 1)
+        #expect(preToolGroups.contains { containsCommand($0, "/tmp/existing-hook") })
+        #expect(preToolGroups.contains { containsCommand($0, "ClawdPalHooks") })
     }
 
     @Test
-    func reinstallDoesNotDuplicateClawdPetHook() throws {
+    func reinstallReplacesExistingClawdPalHookGroup() throws {
         let directory = try temporaryDirectory()
-        let settingsPath = directory.appendingPathComponent("hooks.json").path
+        let settingsPath = directory.appendingPathComponent("settings.json").path
         let hookPath = try fakeExecutable(in: directory)
 
-        _ = try CodexHookSettings.install(
+        _ = try ClaudeHookSettings.install(
             settingsPath: settingsPath,
             hookBinaryPath: hookPath,
-            events: ["Stop"]
+            events: ["PreToolUse"]
         )
-        _ = try CodexHookSettings.install(
+        _ = try ClaudeHookSettings.install(
             settingsPath: settingsPath,
             hookBinaryPath: hookPath,
-            events: ["Stop"]
+            events: ["PreToolUse"]
         )
 
         let settings = try readSettings(settingsPath)
         let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
-        let groups = try #require(hooks["Stop"]?.arrayValue)
+        let groups = try #require(hooks["PreToolUse"]?.arrayValue)
 
-        #expect(groups.filter { containsCommand($0, "ClawdPetHooks") }.count == 1)
+        #expect(groups.filter { containsCommand($0, "ClawdPalHooks") }.count == 1)
     }
 
     @Test
-    func uninstallRemovesOnlyClawdPetHooks() throws {
+    func uninstallRemovesOnlyClawdPalHooks() throws {
         let directory = try temporaryDirectory()
-        let settingsPath = directory.appendingPathComponent("hooks.json").path
+        let settingsPath = directory.appendingPathComponent("settings.json").path
         let hookPath = try fakeExecutable(in: directory)
 
         try """
         {
           "hooks": {
-            "Stop": [
+            "PreToolUse": [
               {
+                "matcher": "Bash",
                 "hooks": [
                   {
                     "type": "command",
-                    "command": "'/Users/ryan/.vibe-island/bin/vibe-island-bridge' --source codex",
-                    "timeout": 5
+                    "command": "/tmp/existing-hook"
                   }
                 ]
               }
@@ -90,49 +94,50 @@ struct CodexHookSettingsTests {
         }
         """.data(using: .utf8)!.write(to: URL(fileURLWithPath: settingsPath))
 
-        _ = try CodexHookSettings.install(
+        _ = try ClaudeHookSettings.install(
             settingsPath: settingsPath,
             hookBinaryPath: hookPath,
-            events: ["Stop"]
+            events: ["PreToolUse", "Stop"]
         )
-        _ = try CodexHookSettings.uninstall(settingsPath: settingsPath)
+        let result = try ClaudeHookSettings.uninstall(settingsPath: settingsPath)
 
+        #expect(result.installedEvents == ["PreToolUse", "Stop"])
         let settings = try readSettings(settingsPath)
         let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
-        let groups = try #require(hooks["Stop"]?.arrayValue)
+        let preToolGroups = try #require(hooks["PreToolUse"]?.arrayValue)
 
-        #expect(groups.count == 1)
-        #expect(groups.contains { containsCommand($0, "vibe-island-bridge") })
-        #expect(!groups.contains { containsCommand($0, "ClawdPetHooks") })
+        #expect(preToolGroups.count == 1)
+        #expect(preToolGroups.contains { containsCommand($0, "/tmp/existing-hook") })
+        #expect(hooks["Stop"] == nil)
     }
 
     @Test
-    func isInstalledTracksCodexHooksAcrossExpectedEvents() throws {
+    func isInstalledTracksClawdPalHooksAcrossExpectedEvents() throws {
         let directory = try temporaryDirectory()
-        let settingsPath = directory.appendingPathComponent("hooks.json").path
+        let settingsPath = directory.appendingPathComponent("settings.json").path
         let hookPath = try fakeExecutable(in: directory)
 
-        #expect(try CodexHookSettings.isInstalled(settingsPath: settingsPath, events: ["Stop"]) == false)
+        #expect(try ClaudeHookSettings.isInstalled(settingsPath: settingsPath, events: ["PreToolUse"]) == false)
 
-        _ = try CodexHookSettings.install(
+        _ = try ClaudeHookSettings.install(
             settingsPath: settingsPath,
             hookBinaryPath: hookPath,
-            events: ["SessionStart", "Stop"]
+            events: ["PreToolUse", "Stop"]
         )
 
-        #expect(try CodexHookSettings.isInstalled(settingsPath: settingsPath, events: ["SessionStart", "Stop"]) == true)
-        #expect(try CodexHookSettings.isInstalled(settingsPath: settingsPath, events: ["SessionStart", "UserPromptSubmit", "Stop"]) == false)
+        #expect(try ClaudeHookSettings.isInstalled(settingsPath: settingsPath, events: ["PreToolUse", "Stop"]) == true)
+        #expect(try ClaudeHookSettings.isInstalled(settingsPath: settingsPath, events: ["PreToolUse", "Stop", "SessionStart"]) == false)
     }
 
     private func temporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClawdPetCodexTests-\(UUID().uuidString)")
+            .appendingPathComponent("ClawdPalTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
     private func fakeExecutable(in directory: URL) throws -> String {
-        let url = directory.appendingPathComponent("ClawdPetHooks")
+        let url = directory.appendingPathComponent("ClawdPalHooks")
         try "#!/bin/sh\nexit 0\n".data(using: .utf8)!.write(to: url)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url.path

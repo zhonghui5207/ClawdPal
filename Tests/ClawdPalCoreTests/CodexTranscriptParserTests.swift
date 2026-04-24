@@ -1,26 +1,26 @@
 import Foundation
 import Testing
-@testable import ClawdPetCore
+@testable import ClawdPalCore
 
 struct CodexTranscriptParserTests {
     @Test
     func parsesExecCommandAndThreadTitle() throws {
         let text = """
-        {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"019db8ff-3ec9-7091-8715-e7ce0be39b75","cwd":"/Users/ryan/code/ClawdPet"}}
+        {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"019db8ff-3ec9-7091-8715-e7ce0be39b75","cwd":"/Users/ryan/code/ClawdPal"}}
         {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"019db8ff-3ec9-7091-8715-e7ce0be39b75","thread_name":"修复拖动卡顿抖动"}}
         {"timestamp":"2026-04-23T06:21:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
-        {"timestamp":"2026-04-23T06:21:10.000Z","type":"event_msg","payload":{"type":"user_message","message":"Read /Users/ryan/code/ClawdPet/README.md, then run git status"}}
-        {"timestamp":"2026-04-23T06:21:12.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,220p' README.md\\",\\"workdir\\":\\"/Users/ryan/code/ClawdPet\\"}","call_id":"call_demo"}}
+        {"timestamp":"2026-04-23T06:21:10.000Z","type":"event_msg","payload":{"type":"user_message","message":"Read /Users/ryan/code/ClawdPal/README.md, then run git status"}}
+        {"timestamp":"2026-04-23T06:21:12.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,220p' README.md\\",\\"workdir\\":\\"/Users/ryan/code/ClawdPal\\"}","call_id":"call_demo"}}
         """
 
         let snapshot = try #require(try CodexTranscriptParser.parseSession(from: text))
 
         #expect(snapshot.sessionID == "019db8ff-3ec9-7091-8715-e7ce0be39b75")
         #expect(snapshot.taskTitle == "修复拖动卡顿抖动")
-        #expect(snapshot.latestUserLine == "Read /Users/ryan/code/ClawdPet/README.md, then run git status")
+        #expect(snapshot.latestUserLine == "Read /Users/ryan/code/ClawdPal/README.md, then run git status")
         #expect(snapshot.event.kind == .reading)
         #expect(snapshot.event.message == "File: README.md")
-        #expect(snapshot.event.workingDirectory == "/Users/ryan/code/ClawdPet")
+        #expect(snapshot.event.workingDirectory == "/Users/ryan/code/ClawdPal")
     }
 
     @Test
@@ -74,7 +74,7 @@ struct CodexTranscriptParserTests {
         let text = """
         {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
         {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
-        {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"user_message","message":"󰀵 ryan …/ClawdPet ❯ open .build/ClawdPet.app"}}
+        {"timestamp":"2026-04-23T06:20:38.546Z","type":"event_msg","payload":{"type":"user_message","message":"󰀵 ryan …/ClawdPal ❯ open .build/ClawdPal.app"}}
         {"timestamp":"2026-04-23T06:20:40.000Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"demo-session","thread_name":"改造 Clawd 浮宠架构"}}
         """
 
@@ -90,7 +90,7 @@ struct CodexTranscriptParserTests {
         {"timestamp":"2026-04-24T06:13:42.936Z","type":"session_meta","payload":{"id":"child-session","timestamp":"2026-04-24T06:13:41.246Z","cwd":"/tmp/project","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Kepler","agent_role":"explorer"}}}}}
         {"timestamp":"2026-04-24T06:13:43.000Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"child-session","thread_name":"Summarize UI flow"}}
         {"timestamp":"2026-04-24T06:13:44.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
-        {"timestamp":"2026-04-24T06:13:45.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,80p' Sources/ClawdPetApp/AppModel.swift\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo"}}
+        {"timestamp":"2026-04-24T06:13:45.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,80p' Sources/ClawdPalApp/AppModel.swift\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo"}}
         """
 
         let snapshot = try #require(try CodexTranscriptParser.parseSession(from: text))

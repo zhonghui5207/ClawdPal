@@ -54,19 +54,19 @@ final class FloatingPetWindowController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(resetPosition),
-            name: .clawdPetResetWindowPosition,
+            name: .clawdPalResetWindowPosition,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(dragEnded),
-            name: .clawdPetDragEnded,
+            name: .clawdPalDragEnded,
             object: window
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(setPanelOpen(_:)),
-            name: .clawdPetSetPanelOpen,
+            name: .clawdPalSetPanelOpen,
             object: nil
         )
     }

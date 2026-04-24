@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ClawdPetCore
+@testable import ClawdPalCore
 
 struct ClaudeHookDecoderTests {
     @Test

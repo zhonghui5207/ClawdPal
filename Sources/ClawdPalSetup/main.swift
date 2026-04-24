@@ -1,4 +1,4 @@
-import ClawdPetCore
+import ClawdPalCore
 import Foundation
 
 enum SetupCommand: String {
@@ -54,13 +54,13 @@ func expandedPath(_ path: String) -> String {
 
 func inferredHookPath() -> String {
     let executablePath = URL(fileURLWithPath: CommandLine.arguments[0])
-    let sibling = executablePath.deletingLastPathComponent().appendingPathComponent("ClawdPetHooks").path
+    let sibling = executablePath.deletingLastPathComponent().appendingPathComponent("ClawdPalHooks").path
     if FileManager.default.fileExists(atPath: sibling) {
         return sibling
     }
 
     return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        .appendingPathComponent(".build/debug/ClawdPetHooks")
+        .appendingPathComponent(".build/debug/ClawdPalHooks")
         .path
 }
 
@@ -69,11 +69,11 @@ func printUsage() {
     ClawdPal Setup
 
     Commands:
-      install-claude [--settings ~/.claude/settings.json] [--hook /path/to/ClawdPetHooks]
+      install-claude [--settings ~/.claude/settings.json] [--hook /path/to/ClawdPalHooks]
       uninstall-claude [--settings ~/.claude/settings.json]
-      install-codex [--settings ~/.codex/hooks.json] [--hook /path/to/ClawdPetHooks]
+      install-codex [--settings ~/.codex/hooks.json] [--hook /path/to/ClawdPalHooks]
       uninstall-codex [--settings ~/.codex/hooks.json]
-      install-all [--hook /path/to/ClawdPetHooks]
+      install-all [--hook /path/to/ClawdPalHooks]
       uninstall-all
       print-hook-path
 
@@ -81,7 +81,7 @@ func printUsage() {
       swift build
 
     Then install:
-      swift run ClawdPetSetup install-all
+      swift run ClawdPalSetup install-all
     """)
 }
 

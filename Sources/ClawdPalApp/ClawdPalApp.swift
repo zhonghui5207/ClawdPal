@@ -1,9 +1,9 @@
 import AppKit
-import ClawdPetCore
+import ClawdPalCore
 import SwiftUI
 
 @main
-struct ClawdPetApp {
+struct ClawdPalApp {
     @MainActor
     static func main() {
         let application = NSApplication.shared

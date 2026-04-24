@@ -5,7 +5,7 @@ public final class BridgeServer {
     public typealias EventHandler = @Sendable (BridgeEnvelope) -> Void
 
     private let socketPath: String
-    private let queue = DispatchQueue(label: "clawdpet.bridge.server", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "clawdpal.bridge.server", qos: .userInitiated)
     private var socketFD: Int32 = -1
     private var isRunning = false
 

@@ -1,5 +1,5 @@
 import AppKit
-import ClawdPetCore
+import ClawdPalCore
 import SwiftUI
 
 struct PetSpriteView: View {
@@ -7,7 +7,7 @@ struct PetSpriteView: View {
 
     var body: some View {
         Group {
-            if let image = ClawdPetImageStore.shared.image(for: mood) {
+            if let image = ClawdPalImageStore.shared.image(for: mood) {
                 Image(nsImage: image)
                     .interpolation(.none)
                     .resizable()
@@ -23,8 +23,8 @@ struct PetSpriteView: View {
     }
 }
 
-final class ClawdPetImageStore {
-    static let shared = ClawdPetImageStore()
+final class ClawdPalImageStore {
+    static let shared = ClawdPalImageStore()
 
     private var cache: [PetMood: NSImage] = [:]
 

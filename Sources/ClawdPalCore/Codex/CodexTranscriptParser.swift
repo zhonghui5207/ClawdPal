@@ -626,10 +626,8 @@ public enum CodexTranscriptParser {
             return nil
         }
 
-        if text.hasPrefix("open .build/ClawdPet.app")
-            || text.hasPrefix("open .build/ClawdPal.app")
-            || text.hasPrefix(".build/ClawdPet.app/Contents/MacOS/ClawdPetSetup")
-            || text.hasPrefix(".build/ClawdPal.app/Contents/MacOS/ClawdPetSetup") {
+        if text.hasPrefix("open .build/ClawdPal.app")
+            || text.hasPrefix(".build/ClawdPal.app/Contents/MacOS/ClawdPalSetup") {
             return nil
         }
 

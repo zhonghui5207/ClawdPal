@@ -1,4 +1,4 @@
-import ClawdPetCore
+import ClawdPalCore
 import Foundation
 
 struct HookSetupService {
@@ -70,13 +70,13 @@ struct HookSetupService {
 
     private func setupExecutablePath() throws -> String {
         let currentExecutable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
-        let sibling = currentExecutable.deletingLastPathComponent().appendingPathComponent("ClawdPetSetup").path
+        let sibling = currentExecutable.deletingLastPathComponent().appendingPathComponent("ClawdPalSetup").path
         if FileManager.default.isExecutableFile(atPath: sibling) {
             return sibling
         }
 
         let debugPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent(".build/debug/ClawdPetSetup")
+            .appendingPathComponent(".build/debug/ClawdPalSetup")
             .path
         if FileManager.default.isExecutableFile(atPath: debugPath) {
             return debugPath
