@@ -113,7 +113,7 @@ final class AppModel: ObservableObject {
     private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPal.codex-transcripts", qos: .utility)
     private let focusHoldDuration: TimeInterval = 5
     private let subagentLifetime: TimeInterval = 30 * 60
-    private let completedSubagentLifetime: TimeInterval = 2 * 60
+    private let completedSubagentLifetime: TimeInterval = 8
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
     private var transcriptPollTimer: DispatchSourceTimer?
@@ -1044,7 +1044,9 @@ final class AppModel: ObservableObject {
         }
 
         switch tracked.event.kind {
-        case .completed, .idle, .unknown:
+        case .completed:
+            return false
+        case .idle, .unknown:
             return true
         case .thinking:
             let line = tracked.latestUserLine ?? cleanedMessage(tracked.event.message, prefix: "Prompt:")

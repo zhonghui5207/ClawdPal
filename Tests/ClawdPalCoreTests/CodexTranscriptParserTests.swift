@@ -124,4 +124,20 @@ struct CodexTranscriptParserTests {
         #expect(subagent.latestSummary == "Read-only inspection complete. No files edited.")
         #expect(subagent.kind == .completed)
     }
+
+    @Test
+    func parsesSubagentShutdownNotification() throws {
+        let text = """
+        {"timestamp":"2026-04-24T06:27:20.000Z","type":"session_meta","payload":{"id":"parent-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-24T06:27:21.000Z","type":"event_msg","payload":{"type":"collab_agent_spawn_end","sender_thread_id":"parent-session","new_thread_id":"child-a","new_agent_nickname":"Tesla","new_agent_role":"explorer","prompt":"Read-only check for parser"}}
+        {"timestamp":"2026-04-24T06:27:22.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<subagent_notification>\\n{\\"agent_path\\":\\"child-a\\",\\"status\\":\\"shutdown\\"}\\n</subagent_notification>"}]}}
+        """
+
+        let snapshot = try #require(try CodexTranscriptParser.parseSession(from: text))
+        let subagent = try #require(snapshot.subagents.first)
+
+        #expect(subagent.sessionID == "child-a")
+        #expect(subagent.latestSummary == "shutdown")
+        #expect(subagent.kind == .completed)
+    }
 }

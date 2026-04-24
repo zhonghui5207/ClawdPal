@@ -589,7 +589,9 @@ public enum CodexTranscriptParser {
 
         let summary: String?
         if let status = object["status"]?.objectValue {
-            summary = stringValue(in: status, keys: ["completed", "failed", "cancelled", "status"])
+            summary = stringValue(in: status, keys: ["completed", "failed", "cancelled", "shutdown", "status"])
+        } else if let status = object["status"]?.stringValue {
+            summary = status
         } else {
             summary = nil
         }

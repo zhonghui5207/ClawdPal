@@ -29,7 +29,10 @@ The app is local-first. Hook events are sent through a local Unix socket, transc
 
 ## Screenshots
 
-Screenshots and release assets will be added before the first public release.
+<p>
+  <img src="docs/screenshots/session-waiting.png" alt="ClawdPal session panel showing a waiting Codex session" width="360">
+  <img src="docs/screenshots/subagents-working.png" alt="ClawdPal session panel showing two active Codex subagents" width="360">
+</p>
 
 ## Supported Integrations
 
@@ -217,7 +220,7 @@ ClawdPal is an early local-first macOS project. The current build is usable for 
 Planned public-release work includes:
 
 - signed release packaging
-- screenshots and demo media
+- demo media
 - clearer onboarding for non-developers
 - expanded documentation for hooks and privacy
 
