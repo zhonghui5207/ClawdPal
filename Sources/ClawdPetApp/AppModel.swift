@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
         var updatedAt: Date
         var priority: Int
         var kind: AgentEventKind
+        var isActive: Bool
 
         var id: String { "\(source)-\(sessionID)" }
     }
@@ -52,11 +53,14 @@ final class AppModel: ObservableObject {
     private let hookSetupService = HookSetupService()
     private let codexTranscriptMonitor = CodexTranscriptMonitor()
     private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPet.codex-transcripts", qos: .utility)
+    private let focusHoldDuration: TimeInterval = 5
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
     private var transcriptPollTimer: DispatchSourceTimer?
     private var sessionsBySource: [String: [String: TrackedSession]] = [:]
     private var transcriptSessionsBySource: [String: [String: TrackedSession]] = [:]
+    private var focusedSessionID: String?
+    private var focusedSessionChangedAt: Date = .distantPast
 
     func start() {
         refreshHookStatus()
@@ -322,20 +326,17 @@ final class AppModel: ObservableObject {
     private func refreshActiveSessions(now: Date = Date()) {
         pruneExpiredSessions(now: now)
 
-        let combinedSessions = mergedSessions()
+        let aliveSessions = mergedSessions()
+        let activeSessions = filteredActiveSessions(from: aliveSessions, now: now)
 
-        sourceSections = buildSourceSections(from: combinedSessions)
-        focusedSession = sourceSections
-            .flatMap(\.sessions)
-            .sorted { lhs, rhs in
-                if lhs.priority != rhs.priority {
-                    return lhs.priority > rhs.priority
-                }
-                return lhs.updatedAt > rhs.updatedAt
-            }
-            .first
+        sourceSections = buildSourceSections(from: aliveSessions, activeSessions: activeSessions, now: now)
+        focusedSession = selectFocusedSession(
+            activeSections: buildSourceSections(from: activeSessions, activeSessions: activeSessions, now: now),
+            aliveSections: sourceSections,
+            now: now
+        )
 
-        updateActivityPresentation(now: now)
+        updateActivityPresentation(activeSections: buildSourceSections(from: activeSessions, activeSessions: activeSessions, now: now), now: now)
 
         var parts: [String] = []
         for section in sourceSections {
@@ -343,7 +344,6 @@ final class AppModel: ObservableObject {
         }
 
         activeSessionSummary = parts.joined(separator: " · ")
-
     }
 
     private func mergedSessions() -> [String: [String: TrackedSession]] {
@@ -378,7 +378,7 @@ final class AppModel: ObservableObject {
         var pruned = sessions
         for (source, sourceSessions) in sessions {
             let filtered = sourceSessions.filter { _, tracked in
-                now.timeIntervalSince(tracked.updatedAt) < sessionLifetime(for: tracked.event)
+                now.timeIntervalSince(tracked.updatedAt) < aliveSessionLifetime(for: tracked.event, source: source)
             }
             if filtered.isEmpty {
                 pruned.removeValue(forKey: source)
@@ -387,6 +387,24 @@ final class AppModel: ObservableObject {
             }
         }
         return pruned
+    }
+
+    private func filteredActiveSessions(
+        from sessions: [String: [String: TrackedSession]],
+        now: Date
+    ) -> [String: [String: TrackedSession]] {
+        var filtered: [String: [String: TrackedSession]] = [:]
+
+        for (source, sourceSessions) in sessions {
+            let activeSourceSessions = sourceSessions.filter { _, tracked in
+                now.timeIntervalSince(tracked.updatedAt) < activeSessionLifetime(for: tracked.event, source: source)
+            }
+            if !activeSourceSessions.isEmpty {
+                filtered[source] = activeSourceSessions
+            }
+        }
+
+        return filtered
     }
 
     private func ensureActivityRefreshTimer() {
@@ -420,11 +438,10 @@ final class AppModel: ObservableObject {
     }
 
     private func applyTranscriptSnapshots(_ snapshots: [CodexTranscriptSnapshot]) {
-        var nextCodexSessions: [String: TrackedSession] = [:]
+        var nextCodexSessions = transcriptSessionsBySource["Codex"] ?? [:]
         let now = Date()
         for snapshot in snapshots {
-            let age = now.timeIntervalSince(snapshot.updatedAt)
-            if age >= sessionLifetime(for: snapshot.event) {
+            if shouldRemoveSession(for: snapshot.event, source: "Codex", now: now, updatedAt: snapshot.updatedAt) {
                 continue
             }
             nextCodexSessions[snapshot.sessionID] = TrackedSession(
@@ -483,7 +500,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func buildSourceSections(from sessions: [String: [String: TrackedSession]]) -> [SourceSection] {
+    private func buildSourceSections(
+        from sessions: [String: [String: TrackedSession]],
+        activeSessions: [String: [String: TrackedSession]],
+        now: Date
+    ) -> [SourceSection] {
         ["Claude", "Codex"].compactMap { source in
             guard let sourceSessions = sessions[source], !sourceSessions.isEmpty else {
                 return nil
@@ -493,10 +514,15 @@ final class AppModel: ObservableObject {
                 sessionDisplay(
                     source: source,
                     sessionID: sessionID,
-                    tracked: tracked
+                    tracked: tracked,
+                    isActive: activeSessions[source]?[sessionID] != nil,
+                    now: now
                 )
             }
             .sorted { lhs, rhs in
+                if lhs.isActive != rhs.isActive {
+                    return lhs.isActive && !rhs.isActive
+                }
                 if lhs.priority != rhs.priority {
                     return lhs.priority > rhs.priority
                 }
@@ -512,20 +538,27 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func sessionDisplay(source: String, sessionID: String, tracked: TrackedSession) -> SessionDisplay {
+    private func sessionDisplay(
+        source: String,
+        sessionID: String,
+        tracked: TrackedSession,
+        isActive: Bool,
+        now: Date
+    ) -> SessionDisplay {
         SessionDisplay(
             source: source,
             sessionID: sessionID,
             taskTitle: tracked.taskTitle,
             latestUserLine: tracked.latestUserLine,
             workspaceName: workspaceName(for: tracked.event.workingDirectory),
-            eventText: eventText(for: tracked.event),
+            eventText: eventText(for: tracked.event, isActive: isActive),
             bubbleText: bubbleSummary(for: source, event: tracked.event),
             workingDirectoryText: workingDirectoryText(for: tracked.event.workingDirectory),
             shortSessionID: shortenedSessionID(sessionID),
             updatedAt: tracked.updatedAt,
             priority: eventPriority(for: tracked.event.kind),
-            kind: tracked.event.kind
+            kind: tracked.event.kind,
+            isActive: isActive
         )
     }
 
@@ -543,8 +576,14 @@ final class AppModel: ObservableObject {
         return shortenedPath(path, components: 2)
     }
 
-    private func eventText(for event: AgentEvent) -> String {
-        humanizedSummary(for: event)
+    private func eventText(for event: AgentEvent, isActive: Bool) -> String {
+        if !isActive {
+            if event.kind == .completed {
+                return "Waiting"
+            }
+            return "Idle"
+        }
+        return humanizedSummary(for: event)
     }
 
     private func eventPriority(for kind: AgentEventKind) -> Int {
@@ -562,13 +601,79 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func updateActivityPresentation(now: Date) {
-        guard !sourceSections.isEmpty else { return }
-        if let focusedSession {
-            mood = moodForFocusedSession(focusedSession)
+    private func selectFocusedSession(
+        activeSections: [SourceSection],
+        aliveSections: [SourceSection],
+        now: Date
+    ) -> SessionDisplay? {
+        let activeCandidates = sortedFocusCandidates(from: activeSections)
+        let aliveCandidates = sortedFocusCandidates(from: aliveSections)
+        let candidates = activeCandidates.isEmpty ? aliveCandidates : activeCandidates
+
+        guard let bestCandidate = candidates.first else {
+            focusedSessionID = nil
+            return nil
         }
 
-        let summaries = sourceSections.compactMap { section in
+        guard let focusedSessionID else {
+            self.focusedSessionID = bestCandidate.id
+            focusedSessionChangedAt = now
+            return bestCandidate
+        }
+
+        guard let currentFocused = candidates.first(where: { $0.id == focusedSessionID }) else {
+            self.focusedSessionID = bestCandidate.id
+            focusedSessionChangedAt = now
+            return bestCandidate
+        }
+
+        if currentFocused.id == bestCandidate.id {
+            return currentFocused
+        }
+
+        if bestCandidate.priority > currentFocused.priority {
+            self.focusedSessionID = bestCandidate.id
+            focusedSessionChangedAt = now
+            return bestCandidate
+        }
+
+        if now.timeIntervalSince(focusedSessionChangedAt) < focusHoldDuration {
+            return currentFocused
+        }
+
+        self.focusedSessionID = bestCandidate.id
+        focusedSessionChangedAt = now
+        return bestCandidate
+    }
+
+    private func sortedFocusCandidates(from sections: [SourceSection]) -> [SessionDisplay] {
+        sections
+            .flatMap(\.sessions)
+            .sorted { lhs, rhs in
+                if lhs.isActive != rhs.isActive {
+                    return lhs.isActive && !rhs.isActive
+                }
+                if lhs.priority != rhs.priority {
+                    return lhs.priority > rhs.priority
+                }
+                return lhs.updatedAt > rhs.updatedAt
+            }
+    }
+
+    private func updateActivityPresentation(activeSections: [SourceSection], now: Date) {
+        guard !activeSections.isEmpty else {
+            mood = .classic
+            bubbleText = "Idle"
+            return
+        }
+
+        if let focusedSession, focusedSession.isActive {
+            mood = moodForFocusedSession(focusedSession)
+        } else if let fallbackSession = activeSections.flatMap(\.sessions).first {
+            mood = moodForFocusedSession(fallbackSession)
+        }
+
+        let summaries = activeSections.compactMap { section in
             section.sessions.first.map { bubbleText(for: $0, sourceCount: sourceSections.count, now: now) }
         }
         guard !summaries.isEmpty else { return }
@@ -816,7 +921,7 @@ final class AppModel: ObservableObject {
         return nil
     }
 
-    private func sessionLifetime(for event: AgentEvent) -> TimeInterval {
+    private func activeSessionLifetime(for event: AgentEvent, source: String) -> TimeInterval {
         switch event.kind {
         case .completed:
             return 4
@@ -825,6 +930,34 @@ final class AppModel: ObservableObject {
         case .idle, .thinking, .reading, .runningCommand, .editingCode, .unknown:
             return 30
         }
+    }
+
+    private func aliveSessionLifetime(for event: AgentEvent, source: String) -> TimeInterval {
+        if isSessionExitEvent(event, source: source) {
+            return 4
+        }
+
+        switch source {
+        case "Claude":
+            return .infinity
+        case "Codex":
+            return .infinity
+        default:
+            return activeSessionLifetime(for: event, source: source)
+        }
+    }
+
+    private func shouldRemoveSession(
+        for event: AgentEvent,
+        source: String,
+        now: Date,
+        updatedAt: Date
+    ) -> Bool {
+        now.timeIntervalSince(updatedAt) >= aliveSessionLifetime(for: event, source: source)
+    }
+
+    private func isSessionExitEvent(_ event: AgentEvent, source: String) -> Bool {
+        source == "Claude" && event.hookEventName == "SessionEnd"
     }
 }
 
