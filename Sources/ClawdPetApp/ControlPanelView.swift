@@ -52,7 +52,8 @@ struct ControlPanelView: View {
                     .help(mood.displayName)
                 }
             }
-            .frame(width: 172, alignment: .leading)
+            .frame(width: 172, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.top, 2)
 
             HStack(spacing: 6) {
@@ -98,7 +99,7 @@ struct ControlPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(width: 248)
+        .frame(width: 220)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)

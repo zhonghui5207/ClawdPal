@@ -12,7 +12,7 @@ struct PetOverlayView: View {
     }
 
     private enum Layout {
-        static let width: CGFloat = 320
+        static let width: CGFloat = 292
         static let compactHeight: CGFloat = 260
         static let fallbackExpandedHeight: CGFloat = 420
         static let spriteHeight: CGFloat = 150
