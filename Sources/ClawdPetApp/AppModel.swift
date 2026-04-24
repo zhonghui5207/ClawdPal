@@ -59,6 +59,7 @@ final class AppModel: ObservableObject {
     private var transcriptPollTimer: DispatchSourceTimer?
     private var sessionsBySource: [String: [String: TrackedSession]] = [:]
     private var transcriptSessionsBySource: [String: [String: TrackedSession]] = [:]
+    private var archivedSessions: [String: Date] = [:]
     private var focusedSessionID: String?
     private var focusedSessionChangedAt: Date = .distantPast
 
@@ -112,6 +113,14 @@ final class AppModel: ObservableObject {
     func connectOrRepairHooks() {
         let pendingText = hookStatus.isFullyConnected ? "Repairing hooks..." : "Connecting Claude and Codex..."
         runHookSetup(.installAll, pendingText: pendingText)
+    }
+
+    func archiveSession(_ session: SessionDisplay) {
+        archivedSessions[session.id] = Date()
+        if focusedSessionID == session.id {
+            focusedSessionID = nil
+        }
+        refreshActiveSessions()
     }
 
     var panelSourceText: String {
@@ -326,7 +335,7 @@ final class AppModel: ObservableObject {
     private func refreshActiveSessions(now: Date = Date()) {
         pruneExpiredSessions(now: now)
 
-        let aliveSessions = mergedSessions()
+        let aliveSessions = visibleSessions(from: mergedSessions())
         let activeSessions = filteredActiveSessions(from: aliveSessions, now: now)
 
         sourceSections = buildSourceSections(from: aliveSessions, activeSessions: activeSessions, now: now)
@@ -364,6 +373,33 @@ final class AppModel: ObservableObject {
         }
 
         return merged
+    }
+
+    private func visibleSessions(
+        from sessions: [String: [String: TrackedSession]]
+    ) -> [String: [String: TrackedSession]] {
+        var visible: [String: [String: TrackedSession]] = [:]
+
+        for (source, sourceSessions) in sessions {
+            var visibleSourceSessions: [String: TrackedSession] = [:]
+
+            for (sessionID, tracked) in sourceSessions {
+                let key = sessionKey(source: source, sessionID: sessionID)
+                if let archivedAt = archivedSessions[key] {
+                    guard tracked.updatedAt > archivedAt else {
+                        continue
+                    }
+                    archivedSessions.removeValue(forKey: key)
+                }
+                visibleSourceSessions[sessionID] = tracked
+            }
+
+            if !visibleSourceSessions.isEmpty {
+                visible[source] = visibleSourceSessions
+            }
+        }
+
+        return visible
     }
 
     private func pruneExpiredSessions(now: Date) {
@@ -459,6 +495,10 @@ final class AppModel: ObservableObject {
         }
 
         refreshActiveSessions()
+    }
+
+    private func sessionKey(source: String, sessionID: String) -> String {
+        "\(source)-\(sessionID)"
     }
 
     private func shortenedPath(_ path: String, components count: Int) -> String {

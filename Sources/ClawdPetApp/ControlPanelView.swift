@@ -192,11 +192,38 @@ struct ControlPanelView: View {
     private func sessionRow(_ session: AppModel.SessionDisplay) -> some View {
         let isExpanded = expandedSessionID == session.id
 
-        Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                expandedSessionID = isExpanded ? nil : session.id
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    expandedSessionID = isExpanded ? nil : session.id
+                }
+            } label: {
+                sessionCard(session, isExpanded: isExpanded)
             }
-        } label: {
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        expandedSessionID = nil
+                        appModel.archiveSession(session)
+                    }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Hide this session until it becomes active again")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionCard(_ session: AppModel.SessionDisplay, isExpanded: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(session.taskTitle ?? session.workspaceName)
@@ -220,32 +247,33 @@ struct ControlPanelView: View {
                         .truncationMode(.tail)
                         .foregroundStyle(Color.primary.opacity(0.72))
                 }
-
-                if isExpanded {
-                    HStack(alignment: .top, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            detailRow(title: "Source", value: session.source)
-                            detailRow(title: "CWD", value: session.workingDirectoryText)
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            detailRow(title: "Action", value: session.eventText)
-                            detailRow(title: "Session", value: session.shortSessionID)
-                        }
-                    }
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-                }
             }
-            .font(.system(size: 10, weight: .regular, design: .monospaced))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                Color.black.opacity(isExpanded ? 0.09 : 0.05),
-                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-            )
+
+            if isExpanded {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        detailRow(title: "Source", value: session.source)
+                        detailRow(title: "CWD", value: session.workingDirectoryText)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        detailRow(title: "Action", value: session.eventText)
+                        detailRow(title: "Session", value: session.shortSessionID)
+                    }
+                }
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            }
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: 10, weight: .regular, design: .monospaced))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Color.black.opacity(isExpanded ? 0.09 : 0.05),
+            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+        )
+        .contentShape(Rectangle())
     }
 }
