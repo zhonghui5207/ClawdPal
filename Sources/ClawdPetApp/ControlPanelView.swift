@@ -7,9 +7,9 @@ struct ControlPanelView: View {
     @State private var expandedSource: String?
 
     private let columns = [
-        GridItem(.fixed(42), spacing: 8),
-        GridItem(.fixed(42), spacing: 8),
-        GridItem(.fixed(42), spacing: 8)
+        GridItem(.fixed(52), spacing: 8),
+        GridItem(.fixed(52), spacing: 8),
+        GridItem(.fixed(52), spacing: 8)
     ]
 
     var body: some View {
@@ -71,15 +71,15 @@ struct ControlPanelView: View {
                         appModel.setMood(mood)
                     } label: {
                         PetSpriteView(mood: mood)
-                            .frame(width: 30, height: 28)
-                            .padding(6)
+                            .frame(width: 42, height: 40)
+                            .padding(5)
                             .background(selectionBackground(for: mood), in: RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                     .help(mood.displayName)
                 }
             }
-            .frame(width: 142, alignment: .leading)
+            .frame(width: 172, alignment: .leading)
             .padding(.top, 2)
 
             HStack(spacing: 6) {
