@@ -5,6 +5,7 @@ import SwiftUI
 struct ControlPanelView: View {
     @ObservedObject var appModel: AppModel
     @State private var expandedSource: String?
+    @State private var expandedSessionID: String?
 
     private let columns = [
         GridItem(.fixed(52), spacing: 8),
@@ -28,34 +29,6 @@ struct ControlPanelView: View {
                 .buttonStyle(.plain)
                 .help("Quit ClawdPet")
             }
-
-            if let title = appModel.panelTitleText {
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-            }
-
-            if let userLine = appModel.panelLatestUserLineText {
-                Text("你: \(userLine)")
-                    .font(.system(size: 10, weight: .regular, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    detailRow(title: "Source", value: appModel.panelSourceText)
-                    detailRow(title: "CWD", value: appModel.panelWorkingDirectoryText)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    detailRow(title: "Action", value: appModel.panelEventText)
-                    detailRow(title: "Session", value: appModel.panelSessionText)
-                }
-            }
-            .font(.system(size: 10, weight: .regular, design: .monospaced))
-            .foregroundStyle(.secondary)
 
             if !appModel.sourceSections.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -152,10 +125,15 @@ struct ControlPanelView: View {
 
     @ViewBuilder
     private func sourceSection(_ section: AppModel.SourceSection) -> some View {
+        let requiresScroll = section.sessions.count > 2
+
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 withAnimation(.easeInOut(duration: 0.16)) {
                     expandedSource = expandedSource == section.source ? nil : section.source
+                    if expandedSource != section.source {
+                        expandedSessionID = nil
+                    }
                 }
             } label: {
                 HStack(spacing: 8) {
@@ -164,11 +142,11 @@ struct ControlPanelView: View {
                     Spacer()
                     Text(section.headline)
                         .font(.system(size: 10, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.72))
                         .lineLimit(1)
                     Image(systemName: expandedSource == section.source ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.7))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
@@ -177,52 +155,97 @@ struct ControlPanelView: View {
             .buttonStyle(.plain)
 
             if expandedSource == section.source {
-                ScrollView {
-                    VStack(spacing: 4) {
-                        ForEach(section.sessions) { session in
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 8) {
-                                    Text(session.taskTitle ?? session.workspaceName)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    Text(session.shortSessionID)
-                                        .lineLimit(1)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                if let latestUserLine = session.latestUserLine, !latestUserLine.isEmpty {
-                                    Text("你: \(latestUserLine)")
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                HStack(spacing: 8) {
-                                    Text(session.eventText)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    Spacer(minLength: 0)
-                                    Text(session.workspaceName)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .font(.system(size: 10, weight: .regular, design: .monospaced))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                Group {
+                    if requiresScroll {
+                        ScrollView {
+                            sessionList(section.sessions)
                         }
+                        .frame(maxHeight: 168)
+                    } else {
+                        sessionList(section.sessions)
                     }
                 }
-                .frame(maxHeight: 104)
+                .padding(.top, 2)
             }
         }
         .onChange(of: appModel.sourceSections.map(\.source)) { sources in
             if let expandedSource, !sources.contains(expandedSource) {
                 self.expandedSource = nil
             }
+            let sessionIDs = appModel.sourceSections.flatMap(\.sessions).map(\.id)
+            if let expandedSessionID, !sessionIDs.contains(expandedSessionID) {
+                self.expandedSessionID = nil
+            }
         }
+    }
+
+    @ViewBuilder
+    private func sessionList(_ sessions: [AppModel.SessionDisplay]) -> some View {
+        VStack(spacing: 6) {
+            ForEach(sessions) { session in
+                sessionRow(session)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ session: AppModel.SessionDisplay) -> some View {
+        let isExpanded = expandedSessionID == session.id
+
+        Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                expandedSessionID = isExpanded ? nil : session.id
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(session.taskTitle ?? session.workspaceName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(session.eventText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(.secondary)
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                if let latestUserLine = session.latestUserLine, !latestUserLine.isEmpty {
+                    Text("你: \(latestUserLine)")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(Color.primary.opacity(0.72))
+                }
+
+                if isExpanded {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            detailRow(title: "Source", value: session.source)
+                            detailRow(title: "CWD", value: session.workingDirectoryText)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            detailRow(title: "Action", value: session.eventText)
+                            detailRow(title: "Session", value: session.shortSessionID)
+                        }
+                    }
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                }
+            }
+            .font(.system(size: 10, weight: .regular, design: .monospaced))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                Color.black.opacity(isExpanded ? 0.09 : 0.05),
+                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
