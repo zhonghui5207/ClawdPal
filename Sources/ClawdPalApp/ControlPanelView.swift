@@ -389,7 +389,7 @@ private struct HookManagerView: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text("Hooks")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -405,9 +405,19 @@ private struct HookManagerView: View {
                 .help("Close hook manager")
             }
 
-            ForEach(appModel.hookTargets) { target in
-                hookTargetRow(target)
+            VStack(spacing: 5) {
+                ForEach(appModel.hookTargets) { target in
+                    hookTargetRow(target)
+                }
             }
+
+            accessibilityRow()
+        }
+        .onAppear {
+            appModel.refreshAccessibilityStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appModel.refreshAccessibilityStatus()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -415,48 +425,99 @@ private struct HookManagerView: View {
     }
 
     @ViewBuilder
-    private func hookTargetRow(_ target: AppModel.HookTargetDisplay) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(target.name)
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    Text(target.stateText)
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(target.needsRepair ? Color(red: 0.58, green: 0.04, blue: 0.04) : ControlPanelPalette.mutedText)
-                        .lineLimit(1)
-                        .help(target.helpText)
-                }
+    private func accessibilityRow() -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: appModel.isAccessibilityTrusted ? "checkmark.circle" : "exclamationmark.triangle")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 16)
+                .foregroundStyle(appModel.isAccessibilityTrusted ? Color(red: 0.03, green: 0.35, blue: 0.12) : Color(red: 0.58, green: 0.04, blue: 0.04))
 
-                Spacer()
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Terminal Access")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                Text(appModel.isAccessibilityTrusted ? "Ready" : "Needs access")
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                    .foregroundStyle(appModel.isAccessibilityTrusted ? ControlPanelPalette.mutedText : Color(red: 0.58, green: 0.04, blue: 0.04))
+                    .lineLimit(1)
+                    .help("Allows ClawdPal to jump back to the matching terminal window")
+            }
 
+            Spacer()
+
+            if appModel.isAccessibilityTrusted {
+                EmptyView()
+            } else {
                 Button {
-                    appModel.runPrimaryHookAction(for: target.id)
+                    appModel.openAccessibilitySettings()
                 } label: {
-                    Label(target.primaryActionTitle, systemImage: target.primaryActionIcon)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 24, height: 22)
                         .foregroundStyle(ControlPanelPalette.primaryText)
                         .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .help(target.primaryActionTitle)
-
-                if target.isConnected {
-                    Button {
-                        appModel.disconnectHook(target.id)
-                    } label: {
-                        Image(systemName: "link.badge.minus")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 22, height: 22)
-                            .foregroundStyle(ControlPanelPalette.primaryText)
-                            .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Disconnect \(target.name)")
-                }
+                .help("Open Accessibility settings")
             }
         }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func hookTargetRow(_ target: AppModel.HookTargetDisplay) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: target.isConnected ? "checkmark.circle" : "link.badge.plus")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 16)
+                .foregroundStyle(target.needsRepair ? Color(red: 0.58, green: 0.04, blue: 0.04) : ControlPanelPalette.mutedText)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(target.name)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(target.stateText)
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                    .foregroundStyle(target.needsRepair ? Color(red: 0.58, green: 0.04, blue: 0.04) : ControlPanelPalette.mutedText)
+                    .lineLimit(1)
+                    .help(target.helpText)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                appModel.runPrimaryHookAction(for: target.id)
+            } label: {
+                Image(systemName: target.primaryActionIcon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 24, height: 22)
+                    .foregroundStyle(ControlPanelPalette.primaryText)
+                    .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("\(target.primaryActionTitle) \(target.name)")
+
+            if target.isConnected {
+                Button {
+                    appModel.disconnectHook(target.id)
+                } label: {
+                    Image(systemName: "link.badge.minus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 24, height: 22)
+                        .foregroundStyle(ControlPanelPalette.primaryText)
+                        .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Disconnect \(target.name)")
+            } else {
+                Color.clear
+                    .frame(width: 24, height: 22)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }

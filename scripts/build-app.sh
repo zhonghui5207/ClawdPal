@@ -50,15 +50,19 @@ PLIST
 
 chmod +x "$MACOS_DIR/ClawdPalApp" "$MACOS_DIR/ClawdPalHooks" "$MACOS_DIR/ClawdPalSetup"
 
-codesign --force --sign - --identifier studio.lovexai.ClawdPal "$MACOS_DIR/ClawdPalApp" >/dev/null 2>&1 || true
-codesign --force --sign - --identifier studio.lovexai.ClawdPal.Hooks "$MACOS_DIR/ClawdPalHooks" >/dev/null 2>&1 || true
-codesign --force --sign - --identifier studio.lovexai.ClawdPal.Setup "$MACOS_DIR/ClawdPalSetup" >/dev/null 2>&1 || true
+APP_REQUIREMENT='=designated => identifier "studio.lovexai.ClawdPal"'
+HOOKS_REQUIREMENT='=designated => identifier "studio.lovexai.ClawdPal.Hooks"'
+SETUP_REQUIREMENT='=designated => identifier "studio.lovexai.ClawdPal.Setup"'
+
+codesign --force --sign - --identifier studio.lovexai.ClawdPal --requirements "$APP_REQUIREMENT" "$MACOS_DIR/ClawdPalApp" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier studio.lovexai.ClawdPal.Hooks --requirements "$HOOKS_REQUIREMENT" "$MACOS_DIR/ClawdPalHooks" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier studio.lovexai.ClawdPal.Setup --requirements "$SETUP_REQUIREMENT" "$MACOS_DIR/ClawdPalSetup" >/dev/null 2>&1 || true
 
 if [ -d "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" ]; then
   cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" "$APP_DIR/ClawdPal_ClawdPalApp.bundle"
   cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle/Resources" "$RESOURCES_DIR/ClawdPalResources"
 fi
 
-codesign --force --sign - "$APP_DIR" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier studio.lovexai.ClawdPal --requirements "$APP_REQUIREMENT" "$APP_DIR" >/dev/null 2>&1 || true
 
 echo "Built $APP_DIR"

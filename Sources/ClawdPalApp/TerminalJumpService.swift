@@ -47,26 +47,20 @@ struct TerminalJumpService {
         fallback: TerminalJumpFallback = .activateApplication
     ) -> String {
         if let windowContext {
-            let trustPrompt = shouldPromptForAccessibilityPermission()
-            if raiseTerminalWindow(matching: windowContext, promptForPermission: trustPrompt) {
-                return "Jumped back to \(applicationName(for: windowContext.bundleID))"
+            guard AXIsProcessTrusted() else {
+                return "Enable Terminal Access"
             }
-            if trustPrompt {
-                return "Enable Accessibility for ClawdPal"
+            if raiseTerminalWindow(matching: windowContext) {
+                return "Jumped back to \(applicationName(for: windowContext.bundleID))"
             }
         }
 
         if let sessionID, !sessionID.isEmpty {
-            let trustPrompt = shouldPromptForAccessibilityPermission()
-            if raiseTerminalWindow(
-                sessionID: sessionID,
-                workingDirectory: workingDirectory,
-                promptForPermission: trustPrompt
-            ) {
-                return "Jumped back to terminal window"
+            guard AXIsProcessTrusted() else {
+                return "Enable Terminal Access"
             }
-            if trustPrompt {
-                return "Enable Accessibility for ClawdPal"
+            if raiseTerminalWindow(sessionID: sessionID, workingDirectory: workingDirectory) {
+                return "Jumped back to terminal window"
             }
         }
 
@@ -177,8 +171,8 @@ struct TerminalJumpService {
         }
     }
 
-    private func raiseTerminalWindow(matching context: TerminalWindowContext, promptForPermission: Bool) -> Bool {
-        guard isAccessibilityTrusted(prompt: promptForPermission) else {
+    private func raiseTerminalWindow(matching context: TerminalWindowContext) -> Bool {
+        guard AXIsProcessTrusted() else {
             return false
         }
 
@@ -192,10 +186,9 @@ struct TerminalJumpService {
 
     private func raiseTerminalWindow(
         sessionID: String,
-        workingDirectory: String?,
-        promptForPermission: Bool
+        workingDirectory: String?
     ) -> Bool {
-        guard isAccessibilityTrusted(prompt: promptForPermission) else {
+        guard AXIsProcessTrusted() else {
             return false
         }
 
@@ -221,21 +214,6 @@ struct TerminalJumpService {
         _ = AXUIElementSetAttributeValue(window.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
 
         return didRaise
-    }
-
-    private func shouldPromptForAccessibilityPermission() -> Bool {
-        !AXIsProcessTrusted()
-    }
-
-    private func isAccessibilityTrusted(prompt: Bool) -> Bool {
-        guard prompt else {
-            return AXIsProcessTrusted()
-        }
-
-        let options = [
-            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
-        ] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
     }
 
     private func terminalWindows(bundleID preferredBundleID: String? = nil) -> [TerminalWindowCandidate] {

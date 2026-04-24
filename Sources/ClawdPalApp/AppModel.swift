@@ -1,3 +1,5 @@
+import AppKit
+import ApplicationServices
 import ClawdPalCore
 import Foundation
 
@@ -106,6 +108,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeSessionSummary: String = ""
     @Published private(set) var sourceSections: [SourceSection] = []
     @Published private(set) var focusedSession: SessionDisplay?
+    @Published private(set) var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @Published var isHookManagerOpen: Bool = false
 
     private let bridgeServer = BridgeServer()
@@ -212,10 +215,23 @@ final class AppModel: ObservableObject {
     func showHookManager() {
         isHookManagerOpen = true
         refreshHookStatus()
+        refreshAccessibilityStatus()
     }
 
     func hideHookManager() {
         isHookManagerOpen = false
+    }
+
+    func refreshAccessibilityStatus() {
+        isAccessibilityTrusted = AXIsProcessTrusted()
+    }
+
+    func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
+            return
+        }
+        refreshAccessibilityStatus()
+        NSWorkspace.shared.open(url)
     }
 
     func runPrimaryHookAction(for target: HookTargetID) {
