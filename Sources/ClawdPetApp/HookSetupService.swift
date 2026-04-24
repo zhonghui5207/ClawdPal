@@ -3,6 +3,10 @@ import Foundation
 
 struct HookSetupService {
     enum Action: String {
+        case installClaude = "install-claude"
+        case uninstallClaude = "uninstall-claude"
+        case installCodex = "install-codex"
+        case uninstallCodex = "uninstall-codex"
         case installAll = "install-all"
         case uninstallAll = "uninstall-all"
     }

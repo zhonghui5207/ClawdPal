@@ -19,6 +19,8 @@ public struct AgentEvent: Codable, Equatable, Sendable {
     public var message: String?
     public var sessionID: String?
     public var workingDirectory: String?
+    public var subagentName: String?
+    public var subagentTask: String?
 
     public init(
         kind: AgentEventKind,
@@ -26,7 +28,9 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         toolName: String? = nil,
         message: String? = nil,
         sessionID: String? = nil,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        subagentName: String? = nil,
+        subagentTask: String? = nil
     ) {
         self.kind = kind
         self.hookEventName = hookEventName
@@ -34,5 +38,7 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         self.message = message
         self.sessionID = sessionID
         self.workingDirectory = workingDirectory
+        self.subagentName = subagentName
+        self.subagentTask = subagentTask
     }
 }

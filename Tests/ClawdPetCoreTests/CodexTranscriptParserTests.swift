@@ -83,4 +83,45 @@ struct CodexTranscriptParserTests {
         #expect(snapshot.latestUserLine == nil)
         #expect(snapshot.taskTitle == "改造 Clawd 浮宠架构")
     }
+
+    @Test
+    func parsesSubagentParentMetadata() throws {
+        let text = """
+        {"timestamp":"2026-04-24T06:13:42.936Z","type":"session_meta","payload":{"id":"child-session","timestamp":"2026-04-24T06:13:41.246Z","cwd":"/tmp/project","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Kepler","agent_role":"explorer"}}}}}
+        {"timestamp":"2026-04-24T06:13:43.000Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"child-session","thread_name":"Summarize UI flow"}}
+        {"timestamp":"2026-04-24T06:13:44.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"timestamp":"2026-04-24T06:13:45.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"sed -n '1,80p' Sources/ClawdPetApp/AppModel.swift\\",\\"workdir\\":\\"/tmp/project\\"}","call_id":"call_demo"}}
+        """
+
+        let snapshot = try #require(try CodexTranscriptParser.parseSession(from: text))
+
+        #expect(snapshot.sessionID == "child-session")
+        #expect(snapshot.parentSessionID == "parent-session")
+        #expect(snapshot.subagentName == "Kepler")
+        #expect(snapshot.subagentRole == "explorer")
+        #expect(snapshot.isSubagent)
+        #expect(snapshot.taskTitle == "Summarize UI flow")
+        #expect(snapshot.event.kind == .reading)
+    }
+
+    @Test
+    func parsesParentSpawnedSubagentsAndNotifications() throws {
+        let text = """
+        {"timestamp":"2026-04-24T06:27:20.000Z","type":"session_meta","payload":{"id":"parent-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-24T06:27:21.000Z","type":"event_msg","payload":{"type":"collab_agent_spawn_end","sender_thread_id":"parent-session","new_thread_id":"child-a","new_agent_nickname":"Tesla","new_agent_role":"explorer","prompt":"Read-only check for parser"}}
+        {"timestamp":"2026-04-24T06:27:22.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<subagent_notification>\\n{\\"agent_path\\":\\"child-a\\",\\"status\\":{\\"completed\\":\\"Read-only inspection complete. No files edited.\\"}}\\n</subagent_notification>"}]}}
+        """
+
+        let snapshot = try #require(try CodexTranscriptParser.parseSession(from: text))
+        let subagent = try #require(snapshot.subagents.first)
+
+        #expect(snapshot.sessionID == "parent-session")
+        #expect(subagent.sessionID == "child-a")
+        #expect(subagent.parentSessionID == "parent-session")
+        #expect(subagent.name == "Tesla")
+        #expect(subagent.role == "explorer")
+        #expect(subagent.taskTitle == "Read-only check for parser")
+        #expect(subagent.latestSummary == "Read-only inspection complete. No files edited.")
+        #expect(subagent.kind == .completed)
+    }
 }

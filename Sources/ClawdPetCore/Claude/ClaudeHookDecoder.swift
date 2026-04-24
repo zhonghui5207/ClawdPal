@@ -60,7 +60,9 @@ public enum ClaudeHookDecoder {
             toolName: toolName,
             message: summary(from: payload, fallbackKind: kind),
             sessionID: payload.sessionID,
-            workingDirectory: payload.cwd
+            workingDirectory: payload.cwd,
+            subagentName: subagentName(from: payload),
+            subagentTask: subagentTask(from: payload)
         )
     }
 
@@ -108,6 +110,14 @@ public enum ClaudeHookDecoder {
             return nil
         }
 
+        if payload.toolName == "Agent" {
+            let name = subagentName(from: payload) ?? "Subagent"
+            if let task = subagentTask(from: payload), !task.isEmpty {
+                return "Subagent: \(name) (\(clipped(task, limit: 48)))"
+            }
+            return "Subagent: \(name)"
+        }
+
         if let command = toolInput["command"]?.stringValue {
             return "Command: \(clipped(command))"
         }
@@ -121,6 +131,30 @@ public enum ClaudeHookDecoder {
             return "Editing: \(clipped(oldString))"
         }
         return nil
+    }
+
+    private static func subagentName(from payload: ClaudeHookPayload) -> String? {
+        if let subagentType = payload.subagentType, !subagentType.isEmpty {
+            return subagentType
+        }
+        guard let toolInput = payload.toolInput?.objectValue else {
+            return nil
+        }
+        return toolInput["subagent_type"]?.stringValue
+            ?? toolInput["agent"]?.stringValue
+            ?? toolInput["name"]?.stringValue
+    }
+
+    private static func subagentTask(from payload: ClaudeHookPayload) -> String? {
+        if let description = payload.description, !description.isEmpty {
+            return description
+        }
+        guard let toolInput = payload.toolInput?.objectValue else {
+            return nil
+        }
+        return toolInput["description"]?.stringValue
+            ?? toolInput["task"]?.stringValue
+            ?? toolInput["prompt"]?.stringValue
     }
 
     private static func clipped(_ value: String, limit: Int = 72) -> String {

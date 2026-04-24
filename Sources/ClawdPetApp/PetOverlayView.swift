@@ -92,11 +92,11 @@ struct PetOverlayView: View {
             Button("Jump Back") {
                 appModel.jumpBackToTerminal()
             }
-            Button("Install Hooks") {
-                appModel.installHooks()
-            }
-            Button("Uninstall Hooks") {
-                appModel.uninstallHooks()
+            Button("Hook Manage") {
+                withAnimation(.easeOut(duration: Layout.panelFadeDuration)) {
+                    isPanelOpen = true
+                    appModel.showHookManager()
+                }
             }
             Button("Reset Position") {
                 appModel.resetWindowPosition()

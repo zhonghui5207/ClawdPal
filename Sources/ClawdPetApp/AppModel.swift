@@ -8,9 +8,11 @@ final class AppModel: ObservableObject {
         var sessionID: String
         var taskTitle: String?
         var latestUserLine: String?
+        var subagents: [SubagentDisplay]
         var workspaceName: String
         var eventText: String
         var bubbleText: String
+        var workingDirectory: String?
         var workingDirectoryText: String
         var shortSessionID: String
         var updatedAt: Date
@@ -19,6 +21,16 @@ final class AppModel: ObservableObject {
         var isActive: Bool
 
         var id: String { "\(source)-\(sessionID)" }
+        var hasActiveSubagents: Bool { !subagents.isEmpty }
+        var activeSubagentCount: Int { subagents.count }
+    }
+
+    struct SubagentDisplay: Identifiable, Equatable {
+        var id: String
+        var name: String
+        var taskTitle: String
+        var actionText: String
+        var durationText: String
     }
 
     struct SourceSection: Identifiable, Equatable {
@@ -31,11 +43,56 @@ final class AppModel: ObservableObject {
         var sourceLabel: String { count > 1 ? "\(source) \(count)" : source }
     }
 
+    enum HookTargetID: String, CaseIterable, Identifiable {
+        case claude
+        case codex
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .claude:
+                return "Claude Code"
+            case .codex:
+                return "Codex"
+            }
+        }
+    }
+
+    struct HookTargetDisplay: Identifiable, Equatable {
+        var id: HookTargetID
+        var name: String
+        var stateText: String
+        var helpText: String
+        var isConnected: Bool
+        var needsRepair: Bool
+        var primaryActionTitle: String
+        var primaryActionIcon: String
+    }
+
     private struct TrackedSession {
         var event: AgentEvent
         var updatedAt: Date
         var taskTitle: String?
         var latestUserLine: String?
+        var pendingSubagent: PendingSubagent?
+        var subagents: [String: TrackedSubagent] = [:]
+    }
+
+    private struct PendingSubagent {
+        var name: String
+        var taskTitle: String
+        var createdAt: Date
+    }
+
+    private struct TrackedSubagent {
+        var id: String
+        var name: String
+        var taskTitle: String
+        var actionText: String
+        var latestKind: AgentEventKind
+        var startedAt: Date
+        var updatedAt: Date
     }
 
     @Published private(set) var mood: PetMood = .classic
@@ -47,6 +104,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeSessionSummary: String = ""
     @Published private(set) var sourceSections: [SourceSection] = []
     @Published private(set) var focusedSession: SessionDisplay?
+    @Published var isHookManagerOpen: Bool = false
 
     private let bridgeServer = BridgeServer()
     private let terminalJumpService = TerminalJumpService()
@@ -54,11 +112,14 @@ final class AppModel: ObservableObject {
     private let codexTranscriptMonitor = CodexTranscriptMonitor()
     private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPet.codex-transcripts", qos: .utility)
     private let focusHoldDuration: TimeInterval = 5
+    private let subagentLifetime: TimeInterval = 30 * 60
+    private let completedSubagentLifetime: TimeInterval = 2 * 60
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
     private var transcriptPollTimer: DispatchSourceTimer?
     private var sessionsBySource: [String: [String: TrackedSession]] = [:]
     private var transcriptSessionsBySource: [String: [String: TrackedSession]] = [:]
+    private var codexSubagentParents: [String: String] = [:]
     private var archivedSessions: [String: Date] = [:]
     private var focusedSessionID: String?
     private var focusedSessionChangedAt: Date = .distantPast
@@ -98,6 +159,10 @@ final class AppModel: ObservableObject {
         bubbleText = terminalJumpService.activateTerminal()
     }
 
+    func jumpToSession(_ session: SessionDisplay) {
+        bubbleText = terminalJumpService.jump(to: session.workingDirectory)
+    }
+
     func resetWindowPosition() {
         NotificationCenter.default.post(name: .clawdPetResetWindowPosition, object: nil)
     }
@@ -113,6 +178,33 @@ final class AppModel: ObservableObject {
     func connectOrRepairHooks() {
         let pendingText = hookStatus.isFullyConnected ? "Repairing hooks..." : "Connecting Claude and Codex..."
         runHookSetup(.installAll, pendingText: pendingText)
+    }
+
+    func showHookManager() {
+        isHookManagerOpen = true
+        refreshHookStatus()
+    }
+
+    func hideHookManager() {
+        isHookManagerOpen = false
+    }
+
+    func runPrimaryHookAction(for target: HookTargetID) {
+        switch target {
+        case .claude:
+            runHookSetup(.installClaude, pendingText: hookPendingText(for: target))
+        case .codex:
+            runHookSetup(.installCodex, pendingText: hookPendingText(for: target))
+        }
+    }
+
+    func disconnectHook(_ target: HookTargetID) {
+        switch target {
+        case .claude:
+            runHookSetup(.uninstallClaude, pendingText: "Disconnecting Claude Code...")
+        case .codex:
+            runHookSetup(.uninstallCodex, pendingText: "Disconnecting Codex...")
+        }
     }
 
     func archiveSession(_ session: SessionDisplay) {
@@ -251,6 +343,22 @@ final class AppModel: ObservableObject {
         hookStateHelp(prefix: "Codex", state: hookStatus.codex)
     }
 
+    var hookTargets: [HookTargetDisplay] {
+        HookTargetID.allCases.map { target in
+            let state = hookState(for: target)
+            return HookTargetDisplay(
+                id: target,
+                name: target.displayName,
+                stateText: hookStateText(for: state),
+                helpText: hookStateHelp(prefix: target.displayName, state: state),
+                isConnected: state == .connected,
+                needsRepair: hookNeedsRepair(state),
+                primaryActionTitle: hookPrimaryActionTitle(for: state),
+                primaryActionIcon: hookPrimaryActionIcon(for: state)
+            )
+        }
+    }
+
     private func apply(_ envelope: BridgeEnvelope) {
         completionTimer?.invalidate()
         lastEvent = envelope.event
@@ -262,7 +370,8 @@ final class AppModel: ObservableObject {
             bubbleText = "\(lastSource): \(presentation.bubbleText)"
         }
 
-        if envelope.event.kind == .completed {
+        if envelope.event.kind == .completed,
+           !hasActiveSubagents(source: lastSource, sessionID: envelope.event.sessionID) {
             completionTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
                 Task { @MainActor in
                     self?.mood = .classic
@@ -303,6 +412,53 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func hookState(for target: HookTargetID) -> HookSetupService.ConnectionState {
+        switch target {
+        case .claude:
+            return hookStatus.claude
+        case .codex:
+            return hookStatus.codex
+        }
+    }
+
+    private func hookNeedsRepair(_ state: HookSetupService.ConnectionState) -> Bool {
+        if case .broken = state {
+            return true
+        }
+        return false
+    }
+
+    private func hookPrimaryActionTitle(for state: HookSetupService.ConnectionState) -> String {
+        switch state {
+        case .connected:
+            return "Reinstall"
+        case .disconnected:
+            return "Connect"
+        case .broken:
+            return "Fix"
+        }
+    }
+
+    private func hookPrimaryActionIcon(for state: HookSetupService.ConnectionState) -> String {
+        switch state {
+        case .connected:
+            return "arrow.clockwise"
+        case .disconnected:
+            return "link.badge.plus"
+        case .broken:
+            return "wrench.and.screwdriver"
+        }
+    }
+
+    private func hookPendingText(for target: HookTargetID) -> String {
+        switch target {
+        case .claude:
+            return "Connecting Claude Code..."
+        case .codex:
+            return "Connecting Codex..."
+        }
+    }
+
     private func refreshHookStatus() {
         Task.detached { [hookSetupService] in
             let status = hookSetupService.status()
@@ -320,16 +476,164 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if source == "Codex", let parentSessionID = codexSubagentParents[sessionID] {
+            attachCodexSubagentEvent(
+                envelope.event,
+                subagentSessionID: sessionID,
+                parentSessionID: parentSessionID,
+                receivedAt: envelope.receivedAt
+            )
+            refreshActiveSessions(now: envelope.receivedAt)
+            ensureActivityRefreshTimer()
+            return
+        }
+
+        let isExistingSession = sessionsBySource[source]?[sessionID] != nil
+            || transcriptSessionsBySource[source]?[sessionID] != nil
+        if source == "Codex", !isExistingSession, !shouldStartCodexSession(from: envelope.event) {
+            refreshActiveSessions(now: envelope.receivedAt)
+            return
+        }
+
         var sourceSessions = sessionsBySource[source] ?? [:]
-        sourceSessions[sessionID] = TrackedSession(
+        var tracked = sourceSessions[sessionID] ?? TrackedSession(
             event: envelope.event,
             updatedAt: envelope.receivedAt,
             taskTitle: nil,
-            latestUserLine: cleanedMessage(envelope.event.message, prefix: "Prompt:")
+            latestUserLine: nil
         )
+
+        tracked.event = envelope.event
+        tracked.updatedAt = envelope.receivedAt
+        if let latestUserLine = cleanedMessage(envelope.event.message, prefix: "Prompt:"), !latestUserLine.isEmpty {
+            tracked.latestUserLine = latestUserLine
+        }
+
+        updateSubagents(for: envelope.event, receivedAt: envelope.receivedAt, tracked: &tracked)
+        sourceSessions[sessionID] = tracked
         sessionsBySource[source] = sourceSessions
         refreshActiveSessions(now: envelope.receivedAt)
         ensureActivityRefreshTimer()
+    }
+
+    private func attachCodexSubagentEvent(
+        _ event: AgentEvent,
+        subagentSessionID: String,
+        parentSessionID: String,
+        receivedAt: Date
+    ) {
+        var sourceSessions = sessionsBySource["Codex"] ?? [:]
+        var parent = sourceSessions[parentSessionID]
+            ?? transcriptSessionsBySource["Codex"]?[parentSessionID]
+            ?? parentPlaceholderSession(for: event, parentSessionID: parentSessionID, receivedAt: receivedAt)
+
+        if event.kind == .completed {
+            parent.subagents.removeValue(forKey: subagentSessionID)
+        } else {
+            let prompt = cleanedMessage(event.message, prefix: "Prompt:")
+            var subagent = parent.subagents[subagentSessionID] ?? TrackedSubagent(
+                id: subagentSessionID,
+                name: event.subagentName ?? "Subagent",
+                taskTitle: prompt ?? event.subagentTask ?? "Working",
+                actionText: humanizedSummary(for: event),
+                latestKind: event.kind,
+                startedAt: receivedAt,
+                updatedAt: receivedAt
+            )
+
+            if let prompt, !prompt.isEmpty, subagent.taskTitle == "Working" {
+                subagent.taskTitle = prompt
+            }
+            if let subagentName = event.subagentName, !subagentName.isEmpty {
+                subagent.name = subagentName
+            }
+            subagent.actionText = humanizedSummary(for: event)
+            subagent.latestKind = event.kind == .completed ? .thinking : event.kind
+            subagent.updatedAt = receivedAt
+            parent.subagents[subagentSessionID] = subagent
+        }
+
+        parent.updatedAt = max(parent.updatedAt, receivedAt)
+        sourceSessions[parentSessionID] = parent
+        sourceSessions.removeValue(forKey: subagentSessionID)
+        sessionsBySource["Codex"] = sourceSessions
+        transcriptSessionsBySource["Codex"]?.removeValue(forKey: subagentSessionID)
+    }
+
+    private func shouldStartCodexSession(from event: AgentEvent) -> Bool {
+        switch event.kind {
+        case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+            return true
+        case .completed, .idle, .unknown:
+            return false
+        }
+    }
+
+    private func hasActiveSubagents(source: String, sessionID: String?) -> Bool {
+        guard let sessionID, !sessionID.isEmpty else {
+            return false
+        }
+        return !(sessionsBySource[source]?[sessionID]?.subagents.isEmpty ?? true)
+    }
+
+    private func updateSubagents(for event: AgentEvent, receivedAt: Date, tracked: inout TrackedSession) {
+        if event.toolName == "Agent" {
+            tracked.pendingSubagent = PendingSubagent(
+                name: event.subagentName ?? "Subagent",
+                taskTitle: event.subagentTask ?? cleanedSubagentTask(from: event.message) ?? "Working",
+                createdAt: receivedAt
+            )
+            return
+        }
+
+        switch event.hookEventName {
+        case "SubagentStart", "TaskCreated":
+            let pending = tracked.pendingSubagent
+            let id = "\(receivedAt.timeIntervalSinceReferenceDate)-\(pending?.name ?? event.subagentName ?? "Subagent")"
+            tracked.subagents[id] = TrackedSubagent(
+                id: id,
+                name: event.subagentName ?? pending?.name ?? "Subagent",
+                taskTitle: event.subagentTask ?? pending?.taskTitle ?? "Working",
+                actionText: "Starting",
+                latestKind: .thinking,
+                startedAt: receivedAt,
+                updatedAt: receivedAt
+            )
+            tracked.pendingSubagent = nil
+        case "SubagentStop", "TaskCompleted":
+            if let id = mostRecentSubagentID(in: tracked) {
+                tracked.subagents.removeValue(forKey: id)
+            }
+        case "SessionEnd":
+            tracked.pendingSubagent = nil
+            tracked.subagents.removeAll()
+        default:
+            guard shouldAttachEventToSubagent(event),
+                  let id = mostRecentSubagentID(in: tracked),
+                  var subagent = tracked.subagents[id] else {
+                return
+            }
+            subagent.actionText = humanizedSummary(for: event)
+            subagent.latestKind = event.kind
+            subagent.updatedAt = receivedAt
+            tracked.subagents[id] = subagent
+        }
+    }
+
+    private func shouldAttachEventToSubagent(_ event: AgentEvent) -> Bool {
+        switch event.hookEventName {
+        case "PreToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied":
+            return event.toolName != "Agent"
+        default:
+            return false
+        }
+    }
+
+    private func mostRecentSubagentID(in tracked: TrackedSession) -> String? {
+        tracked.subagents.values
+            .sorted { lhs, rhs in lhs.updatedAt > rhs.updatedAt }
+            .first?
+            .id
     }
 
     private func refreshActiveSessions(now: Date = Date()) {
@@ -372,6 +676,13 @@ final class AppModel: ObservableObject {
             merged[source] = mergedSourceSessions
         }
 
+        if var codexSessions = merged["Codex"] {
+            for subagentSessionID in codexSubagentParents.keys {
+                codexSessions.removeValue(forKey: subagentSessionID)
+            }
+            merged["Codex"] = codexSessions
+        }
+
         return merged
     }
 
@@ -384,6 +695,10 @@ final class AppModel: ObservableObject {
             var visibleSourceSessions: [String: TrackedSession] = [:]
 
             for (sessionID, tracked) in sourceSessions {
+                if source == "Codex", codexSubagentParents[sessionID] != nil {
+                    continue
+                }
+
                 let key = sessionKey(source: source, sessionID: sessionID)
                 if let archivedAt = archivedSessions[key] {
                     guard tracked.updatedAt > archivedAt else {
@@ -413,8 +728,24 @@ final class AppModel: ObservableObject {
     ) -> [String: [String: TrackedSession]] {
         var pruned = sessions
         for (source, sourceSessions) in sessions {
-            let filtered = sourceSessions.filter { _, tracked in
-                now.timeIntervalSince(tracked.updatedAt) < aliveSessionLifetime(for: tracked.event, source: source)
+            var filtered: [String: TrackedSession] = [:]
+            for (sessionID, tracked) in sourceSessions {
+                if source == "Codex", codexSubagentParents[sessionID] != nil {
+                    continue
+                }
+
+                var nextTracked = tracked
+                nextTracked.subagents = tracked.subagents.filter { _, subagent in
+                    now.timeIntervalSince(subagent.updatedAt) < lifetime(forSubagent: subagent)
+                }
+                if !nextTracked.subagents.isEmpty {
+                    filtered[sessionID] = nextTracked
+                    continue
+                }
+                guard now.timeIntervalSince(nextTracked.updatedAt) < aliveSessionLifetime(for: nextTracked.event, source: source) else {
+                    continue
+                }
+                filtered[sessionID] = nextTracked
             }
             if filtered.isEmpty {
                 pruned.removeValue(forKey: source)
@@ -433,7 +764,10 @@ final class AppModel: ObservableObject {
 
         for (source, sourceSessions) in sessions {
             let activeSourceSessions = sourceSessions.filter { _, tracked in
-                now.timeIntervalSince(tracked.updatedAt) < activeSessionLifetime(for: tracked.event, source: source)
+                if !tracked.subagents.isEmpty {
+                    return true
+                }
+                return now.timeIntervalSince(tracked.updatedAt) < activeSessionLifetime(for: tracked.event, source: source)
             }
             if !activeSourceSessions.isEmpty {
                 filtered[source] = activeSourceSessions
@@ -476,16 +810,59 @@ final class AppModel: ObservableObject {
     private func applyTranscriptSnapshots(_ snapshots: [CodexTranscriptSnapshot]) {
         var nextCodexSessions = transcriptSessionsBySource["Codex"] ?? [:]
         let now = Date()
-        for snapshot in snapshots {
-            if shouldRemoveSession(for: snapshot.event, source: "Codex", now: now, updatedAt: snapshot.updatedAt) {
+
+        for snapshot in snapshots where !snapshot.isSubagent {
+            for subagent in snapshot.subagents {
+                codexSubagentParents[subagent.sessionID] = snapshot.sessionID
+                nextCodexSessions.removeValue(forKey: subagent.sessionID)
+                sessionsBySource["Codex"]?.removeValue(forKey: subagent.sessionID)
+            }
+
+            let isAlreadyTracked = nextCodexSessions[snapshot.sessionID] != nil
+                || sessionsBySource["Codex"]?[snapshot.sessionID] != nil
+            guard !snapshot.subagents.isEmpty || shouldAcceptCodexSnapshot(snapshot, isAlreadyTracked: isAlreadyTracked, now: now) else {
                 continue
             }
-            nextCodexSessions[snapshot.sessionID] = TrackedSession(
+
+            var tracked = nextCodexSessions[snapshot.sessionID] ?? sessionsBySource["Codex"]?[snapshot.sessionID] ?? TrackedSession(
                 event: snapshot.event,
                 updatedAt: snapshot.updatedAt,
                 taskTitle: snapshot.taskTitle,
                 latestUserLine: snapshot.latestUserLine
             )
+            tracked.event = snapshot.event
+            tracked.updatedAt = snapshot.updatedAt
+            tracked.taskTitle = snapshot.taskTitle ?? tracked.taskTitle
+            tracked.latestUserLine = snapshot.latestUserLine ?? tracked.latestUserLine
+            for subagent in snapshot.subagents {
+                tracked.subagents[subagent.sessionID] = trackedSubagent(from: subagent)
+                tracked.updatedAt = max(tracked.updatedAt, subagent.updatedAt)
+            }
+            nextCodexSessions[snapshot.sessionID] = tracked
+        }
+
+        for snapshot in snapshots where snapshot.isSubagent {
+            guard let parentSessionID = snapshot.parentSessionID else {
+                continue
+            }
+            codexSubagentParents[snapshot.sessionID] = parentSessionID
+            nextCodexSessions.removeValue(forKey: snapshot.sessionID)
+            sessionsBySource["Codex"]?.removeValue(forKey: snapshot.sessionID)
+
+            guard now.timeIntervalSince(snapshot.updatedAt) < subagentLifetime else {
+                nextCodexSessions[parentSessionID]?.subagents.removeValue(forKey: snapshot.sessionID)
+                continue
+            }
+
+            if nextCodexSessions[parentSessionID] == nil {
+                if let hookTracked = sessionsBySource["Codex"]?[parentSessionID] {
+                    nextCodexSessions[parentSessionID] = hookTracked
+                } else {
+                    nextCodexSessions[parentSessionID] = parentPlaceholderSession(for: snapshot, parentSessionID: parentSessionID)
+                }
+            }
+
+            nextCodexSessions[parentSessionID]?.subagents[snapshot.sessionID] = trackedSubagent(from: snapshot)
         }
 
         if nextCodexSessions.isEmpty {
@@ -495,6 +872,83 @@ final class AppModel: ObservableObject {
         }
 
         refreshActiveSessions()
+    }
+
+    private func shouldAcceptCodexSnapshot(_ snapshot: CodexTranscriptSnapshot, isAlreadyTracked: Bool, now: Date) -> Bool {
+        if shouldRemoveSession(for: snapshot.event, source: "Codex", now: now, updatedAt: snapshot.updatedAt) {
+            return false
+        }
+
+        if isAlreadyTracked {
+            return true
+        }
+
+        switch snapshot.event.kind {
+        case .completed, .idle, .unknown:
+            return false
+        case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+            return now.timeIntervalSince(snapshot.updatedAt) < activeSessionLifetime(for: snapshot.event, source: "Codex")
+        }
+    }
+
+    private func parentPlaceholderSession(for snapshot: CodexTranscriptSnapshot, parentSessionID: String) -> TrackedSession {
+        let event = AgentEvent(
+            kind: .thinking,
+            hookEventName: "TranscriptSubagentParent",
+            message: "Watching subagents",
+            sessionID: parentSessionID,
+            workingDirectory: snapshot.event.workingDirectory
+        )
+        return TrackedSession(
+            event: event,
+            updatedAt: snapshot.updatedAt,
+            taskTitle: nil,
+            latestUserLine: nil
+        )
+    }
+
+    private func parentPlaceholderSession(
+        for event: AgentEvent,
+        parentSessionID: String,
+        receivedAt: Date
+    ) -> TrackedSession {
+        let parentEvent = AgentEvent(
+            kind: .thinking,
+            hookEventName: "CodexSubagentParent",
+            message: "Watching subagents",
+            sessionID: parentSessionID,
+            workingDirectory: event.workingDirectory
+        )
+        return TrackedSession(
+            event: parentEvent,
+            updatedAt: receivedAt,
+            taskTitle: nil,
+            latestUserLine: nil
+        )
+    }
+
+    private func trackedSubagent(from snapshot: CodexTranscriptSnapshot) -> TrackedSubagent {
+        TrackedSubagent(
+            id: snapshot.sessionID,
+            name: snapshot.subagentName ?? snapshot.subagentRole ?? "Subagent",
+            taskTitle: snapshot.taskTitle ?? snapshot.latestUserLine ?? "Working",
+            actionText: humanizedSummary(for: snapshot.event),
+            latestKind: snapshot.event.kind == .completed ? .thinking : snapshot.event.kind,
+            startedAt: snapshot.startedAt ?? snapshot.updatedAt,
+            updatedAt: snapshot.updatedAt
+        )
+    }
+
+    private func trackedSubagent(from snapshot: CodexSubagentSnapshot) -> TrackedSubagent {
+        TrackedSubagent(
+            id: snapshot.sessionID,
+            name: snapshot.name,
+            taskTitle: snapshot.taskTitle,
+            actionText: snapshot.latestSummary ?? (snapshot.kind == .completed ? "Ready" : "Working"),
+            latestKind: snapshot.kind,
+            startedAt: snapshot.startedAt,
+            updatedAt: snapshot.updatedAt
+        )
     }
 
     private func sessionKey(source: String, sessionID: String) -> String {
@@ -585,21 +1039,53 @@ final class AppModel: ObservableObject {
         isActive: Bool,
         now: Date
     ) -> SessionDisplay {
-        SessionDisplay(
+        let subagents = subagentDisplays(from: tracked.subagents, now: now)
+        let effectiveKind = effectiveKind(for: tracked)
+        let effectiveEventText = eventText(for: tracked.event, isActive: isActive, subagentCount: subagents.count)
+        let effectiveBubbleText = bubbleSummary(for: source, event: tracked.event, subagents: subagents)
+
+        return SessionDisplay(
             source: source,
             sessionID: sessionID,
             taskTitle: tracked.taskTitle,
             latestUserLine: tracked.latestUserLine,
+            subagents: subagents,
             workspaceName: workspaceName(for: tracked.event.workingDirectory),
-            eventText: eventText(for: tracked.event, isActive: isActive),
-            bubbleText: bubbleSummary(for: source, event: tracked.event),
+            eventText: effectiveEventText,
+            bubbleText: effectiveBubbleText,
+            workingDirectory: tracked.event.workingDirectory,
             workingDirectoryText: workingDirectoryText(for: tracked.event.workingDirectory),
             shortSessionID: shortenedSessionID(sessionID),
             updatedAt: tracked.updatedAt,
-            priority: eventPriority(for: tracked.event.kind),
-            kind: tracked.event.kind,
+            priority: subagents.isEmpty ? eventPriority(for: tracked.event.kind) : 6,
+            kind: effectiveKind,
             isActive: isActive
         )
+    }
+
+    private func effectiveKind(for tracked: TrackedSession) -> AgentEventKind {
+        guard let subagent = tracked.subagents.values.sorted(by: { $0.updatedAt > $1.updatedAt }).first else {
+            return tracked.event.kind
+        }
+        return subagent.latestKind == .completed ? .thinking : subagent.latestKind
+    }
+
+    private func subagentDisplays(from subagents: [String: TrackedSubagent], now: Date) -> [SubagentDisplay] {
+        subagents.values
+            .sorted { lhs, rhs in lhs.updatedAt > rhs.updatedAt }
+            .map { subagent in
+                SubagentDisplay(
+                    id: subagent.id,
+                    name: subagent.name,
+                    taskTitle: subagent.taskTitle,
+                    actionText: subagent.actionText,
+                    durationText: elapsedText(from: subagent.startedAt, to: now)
+                )
+            }
+    }
+
+    private func lifetime(forSubagent subagent: TrackedSubagent) -> TimeInterval {
+        subagent.latestKind == .completed ? completedSubagentLifetime : subagentLifetime
     }
 
     private func workspaceName(for path: String?) -> String {
@@ -616,7 +1102,10 @@ final class AppModel: ObservableObject {
         return shortenedPath(path, components: 2)
     }
 
-    private func eventText(for event: AgentEvent, isActive: Bool) -> String {
+    private func eventText(for event: AgentEvent, isActive: Bool, subagentCount: Int) -> String {
+        if subagentCount > 0 {
+            return subagentCount == 1 ? "1 subagent" : "\(subagentCount) subagents"
+        }
         if !isActive {
             if event.kind == .completed {
                 return "Waiting"
@@ -747,8 +1236,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func bubbleSummary(for source: String, event: AgentEvent) -> String {
-        "\(source): \(humanizedSummary(for: event))"
+    private func bubbleSummary(for source: String, event: AgentEvent, subagents: [SubagentDisplay]) -> String {
+        if let subagent = subagents.first {
+            return "\(source): \(subagent.name) \(subagent.actionText)"
+        }
+        return "\(source): \(humanizedSummary(for: event))"
     }
 
     private func bubbleText(for session: SessionDisplay, sourceCount: Int, now: Date) -> String {
@@ -837,6 +1329,34 @@ final class AppModel: ObservableObject {
             return nil
         }
         return message.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func cleanedSubagentTask(from message: String?) -> String? {
+        guard let message = cleanedMessage(message, prefix: "Subagent:") else {
+            return nil
+        }
+        guard let open = message.firstIndex(of: "("),
+              let close = message.lastIndex(of: ")"),
+              open < close else {
+            return nil
+        }
+        return String(message[message.index(after: open)..<close])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func elapsedText(from startDate: Date, to endDate: Date) -> String {
+        let seconds = max(0, Int(endDate.timeIntervalSince(startDate)))
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        if minutes < 60 {
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        return "\(hours)h \(remainingMinutes)m"
     }
 
     private func strippedKnownPrefix(_ message: String) -> String {
@@ -981,7 +1501,14 @@ final class AppModel: ObservableObject {
         case "Claude":
             return .infinity
         case "Codex":
-            return .infinity
+            switch event.kind {
+            case .completed:
+                return 120
+            case .idle, .unknown:
+                return 30
+            case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+                return .infinity
+            }
         default:
             return activeSessionLifetime(for: event, source: source)
         }

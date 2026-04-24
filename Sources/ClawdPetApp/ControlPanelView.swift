@@ -2,6 +2,20 @@ import AppKit
 import ClawdPetCore
 import SwiftUI
 
+private enum ControlPanelPalette {
+    static let primaryText = Color.black.opacity(0.90)
+    static let secondaryText = Color.black.opacity(0.74)
+    static let mutedText = Color.black.opacity(0.66)
+    static let controlBackground = Color.black.opacity(0.11)
+    static let controlBackgroundStrong = Color.black.opacity(0.15)
+}
+
+private struct StatusStyle {
+    var label: String
+    var textColor: Color
+    var backgroundColor: Color
+}
+
 struct ControlPanelView: View {
     @ObservedObject var appModel: AppModel
     @State private var expandedSource: String?
@@ -38,6 +52,10 @@ struct ControlPanelView: View {
                 }
             }
 
+            if appModel.isHookManagerOpen {
+                HookManagerView(appModel: appModel)
+            }
+
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(PetMood.allCases, id: \.self) { mood in
                     Button {
@@ -56,43 +74,17 @@ struct ControlPanelView: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.top, 2)
 
-            HStack(spacing: 6) {
-                Button {
-                    appModel.jumpBackToTerminal()
-                } label: {
-                    Label("Terminal", systemImage: "terminal")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Activate terminal")
-
-                Button {
-                    appModel.connectOrRepairHooks()
-                } label: {
-                    Label(appModel.hookPrimaryActionTitle, systemImage: appModel.hookPrimaryActionIcon)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help(appModel.hookPrimaryActionHelp)
-            }
-
             HStack {
                 if !appModel.activeSessionSummary.isEmpty {
                     Text(appModel.activeSessionSummary)
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(ControlPanelPalette.mutedText)
                         .lineLimit(1)
                 }
                 Spacer()
                 Text(appModel.panelBridgeStatusText)
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(ControlPanelPalette.mutedText)
                     .lineLimit(1)
                     .help(appModel.panelBridgeStatusHelp)
             }
@@ -116,18 +108,16 @@ struct ControlPanelView: View {
             Text(value)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(.primary)
+                .foregroundStyle(ControlPanelPalette.primaryText)
         }
     }
 
     private func selectionBackground(for mood: PetMood) -> Color {
-        mood == appModel.mood ? Color.accentColor.opacity(0.18) : Color.black.opacity(0.08)
+        mood == appModel.mood ? Color.accentColor.opacity(0.22) : ControlPanelPalette.controlBackground
     }
 
     @ViewBuilder
     private func sourceSection(_ section: AppModel.SourceSection) -> some View {
-        let requiresScroll = section.sessions.count > 2
-
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 withAnimation(.easeInOut(duration: 0.16)) {
@@ -136,36 +126,41 @@ struct ControlPanelView: View {
                         expandedSessionID = nil
                     }
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(section.sourceLabel)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    Spacer()
-                    Text(section.headline)
-                        .font(.system(size: 10, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.primary.opacity(0.72))
-                        .lineLimit(1)
-                    Image(systemName: expandedSource == section.source ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color.primary.opacity(0.7))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(section.sourceLabel)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .frame(minWidth: 44, alignment: .leading)
+
+                        if let leadingSession = section.sessions.first {
+                            statusChip(for: leadingSession)
+                            Text(leadingSession.taskTitle ?? leadingSession.workspaceName)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(ControlPanelPalette.primaryText)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        } else {
+                            Text(section.headline)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(ControlPanelPalette.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: expandedSource == section.source ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(ControlPanelPalette.secondaryText)
+                            .frame(width: 12)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                .background(ControlPanelPalette.controlBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
 
             if expandedSource == section.source {
-                Group {
-                    if requiresScroll {
-                        ScrollView {
-                            sessionList(section.sessions)
-                        }
-                        .frame(maxHeight: 168)
-                    } else {
-                        sessionList(section.sessions)
-                    }
-                }
+                sessionList(section.sessions)
                 .padding(.top, 2)
             }
         }
@@ -204,20 +199,36 @@ struct ControlPanelView: View {
             .buttonStyle(.plain)
 
             if isExpanded {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        expandedSessionID = nil
-                        appModel.archiveSession(session)
+                HStack(spacing: 6) {
+                    Button {
+                        appModel.jumpToSession(session)
+                    } label: {
+                        Label("Jump", systemImage: "terminal")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .foregroundStyle(ControlPanelPalette.primaryText)
+                            .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 5)
-                        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .buttonStyle(.plain)
+                    .help("Open terminal at this session's working directory")
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            expandedSessionID = nil
+                            appModel.archiveSession(session)
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .foregroundStyle(ControlPanelPalette.primaryText)
+                            .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Hide this session until it becomes active again")
                 }
-                .buttonStyle(.plain)
-                .help("Hide this session until it becomes active again")
             }
         }
     }
@@ -227,26 +238,23 @@ struct ControlPanelView: View {
         VStack(alignment: .leading, spacing: 4) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
+                    statusChip(for: session)
+
                     Text(session.taskTitle ?? session.workspaceName)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(session.eventText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .foregroundStyle(.secondary)
-
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ControlPanelPalette.mutedText)
                 }
 
                 if let latestUserLine = session.latestUserLine, !latestUserLine.isEmpty {
                     Text("你: \(latestUserLine)")
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .foregroundStyle(Color.primary.opacity(0.72))
+                        .foregroundStyle(ControlPanelPalette.secondaryText)
                 }
             }
 
@@ -261,10 +269,15 @@ struct ControlPanelView: View {
                         detailRow(title: "Action", value: session.eventText)
                         detailRow(title: "Session", value: session.shortSessionID)
                     }
-                }
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 10, weight: .regular, design: .monospaced))
+            .foregroundStyle(ControlPanelPalette.secondaryText)
                 .padding(.top, 2)
+
+                if !session.subagents.isEmpty {
+                    subagentList(session.subagents)
+                        .padding(.top, 2)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -272,9 +285,178 @@ struct ControlPanelView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
-            Color.black.opacity(isExpanded ? 0.09 : 0.05),
+            isExpanded ? ControlPanelPalette.controlBackgroundStrong : ControlPanelPalette.controlBackground,
             in: RoundedRectangle(cornerRadius: 5, style: .continuous)
         )
-        .contentShape(Rectangle())
+            .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func subagentList(_ subagents: [AppModel.SubagentDisplay]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 8, weight: .bold))
+                Text("Subagents (\(subagents.count))")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(ControlPanelPalette.secondaryText)
+
+            ForEach(subagents) { subagent in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(red: 0.16, green: 0.45, blue: 0.90))
+                            .frame(width: 6, height: 6)
+
+                        Text("\(subagent.name) (\(subagent.taskTitle))")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(ControlPanelPalette.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Spacer(minLength: 0)
+
+                        Text(subagent.durationText)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(ControlPanelPalette.mutedText)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+
+                    Text("└ \(subagent.actionText)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(ControlPanelPalette.mutedText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.leading, 12)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(Color.black.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func statusChip(for session: AppModel.SessionDisplay) -> some View {
+        let style = statusStyle(for: session)
+
+        Text(style.label)
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .foregroundStyle(style.textColor)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(style.backgroundColor, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func statusStyle(for session: AppModel.SessionDisplay) -> StatusStyle {
+        if session.hasActiveSubagents {
+            return StatusStyle(label: "Working", textColor: Color(red: 0.02, green: 0.13, blue: 0.34), backgroundColor: Color(red: 0.66, green: 0.78, blue: 0.98))
+        }
+
+        if !session.isActive {
+            if session.kind == .completed {
+                return StatusStyle(label: "Waiting", textColor: Color.black.opacity(0.88), backgroundColor: Color(red: 0.78, green: 0.77, blue: 0.68))
+            }
+            return StatusStyle(label: "Idle", textColor: Color.black.opacity(0.82), backgroundColor: Color(red: 0.74, green: 0.76, blue: 0.70))
+        }
+
+        switch session.kind {
+        case .editingCode:
+            return StatusStyle(label: "Editing", textColor: Color(red: 0.02, green: 0.13, blue: 0.34), backgroundColor: Color(red: 0.66, green: 0.78, blue: 0.98))
+        case .runningCommand:
+            return StatusStyle(label: "Command", textColor: Color(red: 0.02, green: 0.13, blue: 0.34), backgroundColor: Color(red: 0.66, green: 0.78, blue: 0.98))
+        case .reading:
+            return StatusStyle(label: "Reading", textColor: Color(red: 0.01, green: 0.23, blue: 0.25), backgroundColor: Color(red: 0.61, green: 0.88, blue: 0.86))
+        case .thinking:
+            return StatusStyle(label: "Thinking", textColor: Color(red: 0.17, green: 0.10, blue: 0.37), backgroundColor: Color(red: 0.77, green: 0.70, blue: 0.94))
+        case .permissionRequest:
+            return StatusStyle(label: "Permission", textColor: Color(red: 0.38, green: 0.18, blue: 0.00), backgroundColor: Color(red: 0.96, green: 0.70, blue: 0.40))
+        case .error:
+            return StatusStyle(label: "Error", textColor: Color(red: 0.46, green: 0.02, blue: 0.02), backgroundColor: Color(red: 0.96, green: 0.62, blue: 0.58))
+        case .completed:
+            return StatusStyle(label: "Done", textColor: Color(red: 0.03, green: 0.28, blue: 0.10), backgroundColor: Color(red: 0.66, green: 0.86, blue: 0.62))
+        case .idle, .unknown:
+            return StatusStyle(label: "Idle", textColor: Color.black.opacity(0.82), backgroundColor: Color(red: 0.74, green: 0.76, blue: 0.70))
+        }
+    }
+}
+
+private struct HookManagerView: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Hooks")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                Spacer()
+                Button {
+                    appModel.hideHookManager()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("Close hook manager")
+            }
+
+            ForEach(appModel.hookTargets) { target in
+                hookTargetRow(target)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(ControlPanelPalette.controlBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func hookTargetRow(_ target: AppModel.HookTargetDisplay) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(target.name)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    Text(target.stateText)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(target.needsRepair ? Color(red: 0.58, green: 0.04, blue: 0.04) : ControlPanelPalette.mutedText)
+                        .lineLimit(1)
+                        .help(target.helpText)
+                }
+
+                Spacer()
+
+                Button {
+                    appModel.runPrimaryHookAction(for: target.id)
+                } label: {
+                    Label(target.primaryActionTitle, systemImage: target.primaryActionIcon)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(ControlPanelPalette.primaryText)
+                        .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help(target.primaryActionTitle)
+
+                if target.isConnected {
+                    Button {
+                        appModel.disconnectHook(target.id)
+                    } label: {
+                        Image(systemName: "link.badge.minus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 22, height: 22)
+                            .foregroundStyle(ControlPanelPalette.primaryText)
+                            .background(ControlPanelPalette.controlBackgroundStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Disconnect \(target.name)")
+                }
+            }
+        }
     }
 }

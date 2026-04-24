@@ -17,15 +17,18 @@ final class CodexTranscriptMonitor {
     private let fileManager = FileManager.default
     private let sessionsRoot: URL
     private let sessionIndexURL: URL
+    private let startedAt: Date
     private var cache: [URL: CachedSnapshot] = [:]
     private var indexCache: IndexCache?
 
     init(
         sessionsRoot: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
-        sessionIndexURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/session_index.jsonl")
+        sessionIndexURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/session_index.jsonl"),
+        startedAt: Date = Date()
     ) {
         self.sessionsRoot = sessionsRoot
         self.sessionIndexURL = sessionIndexURL
+        self.startedAt = startedAt
     }
 
     func snapshots(now: Date = Date()) -> [CodexTranscriptSnapshot] {
@@ -73,7 +76,7 @@ final class CodexTranscriptMonitor {
         }
 
         do {
-            var accumulator = CodexTranscriptParser.Accumulator()
+            var accumulator = CodexTranscriptParser.Accumulator(activityCutoff: startedAt)
             try accumulator.consume(text: text)
             let snapshot = accumulator.snapshot()
             cache[url] = CachedSnapshot(
@@ -130,7 +133,7 @@ final class CodexTranscriptMonitor {
     private func candidateFiles(now: Date) -> [URL] {
         var urls: [URL] = []
         let calendar = Calendar.current
-        let freshnessCutoff = now.addingTimeInterval(-(60 * 90))
+        let freshnessCutoff = max(startedAt, now.addingTimeInterval(-(60 * 90)))
 
         for dayOffset in 0...1 {
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }

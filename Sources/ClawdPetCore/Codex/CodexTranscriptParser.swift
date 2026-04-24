@@ -2,22 +2,75 @@ import Foundation
 
 public struct CodexTranscriptSnapshot: Equatable, Sendable {
     public var sessionID: String
+    public var parentSessionID: String?
+    public var subagentName: String?
+    public var subagentRole: String?
+    public var subagents: [CodexSubagentSnapshot]
     public var taskTitle: String?
     public var latestUserLine: String?
     public var event: AgentEvent
+    public var startedAt: Date?
     public var updatedAt: Date
 
     public init(
         sessionID: String,
+        parentSessionID: String? = nil,
+        subagentName: String? = nil,
+        subagentRole: String? = nil,
+        subagents: [CodexSubagentSnapshot] = [],
         taskTitle: String? = nil,
         latestUserLine: String? = nil,
         event: AgentEvent,
+        startedAt: Date? = nil,
         updatedAt: Date
     ) {
         self.sessionID = sessionID
+        self.parentSessionID = parentSessionID
+        self.subagentName = subagentName
+        self.subagentRole = subagentRole
+        self.subagents = subagents
         self.taskTitle = taskTitle
         self.latestUserLine = latestUserLine
         self.event = event
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+    }
+
+    public var isSubagent: Bool {
+        parentSessionID != nil
+    }
+}
+
+public struct CodexSubagentSnapshot: Equatable, Sendable {
+    public var sessionID: String
+    public var parentSessionID: String
+    public var name: String
+    public var role: String?
+    public var taskTitle: String
+    public var latestSummary: String?
+    public var kind: AgentEventKind
+    public var startedAt: Date
+    public var updatedAt: Date
+
+    public init(
+        sessionID: String,
+        parentSessionID: String,
+        name: String,
+        role: String? = nil,
+        taskTitle: String,
+        latestSummary: String? = nil,
+        kind: AgentEventKind,
+        startedAt: Date,
+        updatedAt: Date
+    ) {
+        self.sessionID = sessionID
+        self.parentSessionID = parentSessionID
+        self.name = name
+        self.role = role
+        self.taskTitle = taskTitle
+        self.latestSummary = latestSummary
+        self.kind = kind
+        self.startedAt = startedAt
         self.updatedAt = updatedAt
     }
 }
@@ -25,14 +78,21 @@ public struct CodexTranscriptSnapshot: Equatable, Sendable {
 public enum CodexTranscriptParser {
     public struct Accumulator {
         private var sessionID: String?
+        private var parentSessionID: String?
+        private var subagentName: String?
+        private var subagentRole: String?
+        private var spawnedSubagents: [String: CodexSubagentSnapshot] = [:]
         private var workingDirectory: String?
         private var taskTitle: String?
         private var currentTurn: TurnState?
         private var lastCompletedTurn: CompletedTurn?
+        private var sessionStartedAt: Date?
         private var latestTimestamp: Date?
+        private var activityCutoff: Date?
 
-        public init(fallbackTitle: String? = nil) {
+        public init(fallbackTitle: String? = nil, activityCutoff: Date? = nil) {
             self.taskTitle = CodexTranscriptParser.cleanedInlineText(fallbackTitle)
+            self.activityCutoff = activityCutoff
         }
 
         public mutating func consume(text: String) throws {
@@ -48,16 +108,36 @@ public enum CodexTranscriptParser {
             guard let object = value.objectValue else { return }
 
             let timestamp = CodexTranscriptParser.dateValue(in: object, key: "timestamp")
+            let lineType = object["type"]?.stringValue
+
+            if lineType != "session_meta",
+               let activityCutoff,
+               let timestamp,
+               timestamp < activityCutoff {
+                return
+            }
+
             latestTimestamp = CodexTranscriptParser.maxDate(latestTimestamp, timestamp)
 
-            switch object["type"]?.stringValue {
+            switch lineType {
             case "session_meta":
                 guard let payload = object["payload"]?.objectValue else { return }
                 sessionID = CodexTranscriptParser.stringValue(in: payload, keys: ["id"]) ?? sessionID
                 workingDirectory = CodexTranscriptParser.stringValue(in: payload, keys: ["cwd"]) ?? workingDirectory
+                sessionStartedAt = CodexTranscriptParser.dateValue(in: payload, key: "timestamp") ?? timestamp ?? sessionStartedAt
+                let threadSpawn = CodexTranscriptParser.subagentThreadSpawn(in: payload)
+                subagentName = CodexTranscriptParser.stringValue(in: payload, keys: ["agent_nickname"])
+                    ?? threadSpawn.flatMap { CodexTranscriptParser.stringValue(in: $0, keys: ["agent_nickname"]) }
+                    ?? subagentName
+                subagentRole = CodexTranscriptParser.stringValue(in: payload, keys: ["agent_role"])
+                    ?? threadSpawn.flatMap { CodexTranscriptParser.stringValue(in: $0, keys: ["agent_role"]) }
+                    ?? subagentRole
+                parentSessionID = threadSpawn.flatMap { CodexTranscriptParser.stringValue(in: $0, keys: ["parent_thread_id", "parentThreadID", "parent_id"]) } ?? parentSessionID
             case "event_msg":
                 guard let payload = object["payload"]?.objectValue else { return }
                 switch payload["type"]?.stringValue {
+                case "collab_agent_spawn_end":
+                    recordSubagentSpawn(from: payload, timestamp: timestamp)
                 case "task_started":
                     let turnID = CodexTranscriptParser.stringValue(in: payload, keys: ["turn_id"]) ?? UUID().uuidString
                     currentTurn = TurnState(
@@ -98,6 +178,8 @@ public enum CodexTranscriptParser {
             case "response_item":
                 guard let payload = object["payload"]?.objectValue else { return }
                 switch payload["type"]?.stringValue {
+                case "message":
+                    recordSubagentNotification(from: payload, timestamp: timestamp)
                 case "function_call", "custom_tool_call":
                     if var activeTurn = currentTurn,
                        let event = CodexTranscriptParser.event(from: payload, sessionID: sessionID, workingDirectory: workingDirectory) {
@@ -161,11 +243,61 @@ public enum CodexTranscriptParser {
 
             return CodexTranscriptSnapshot(
                 sessionID: sessionID,
+                parentSessionID: parentSessionID,
+                subagentName: subagentName,
+                subagentRole: subagentRole,
+                subagents: spawnedSubagents.values.sorted { lhs, rhs in
+                    if lhs.kind != rhs.kind {
+                        return lhs.kind != .completed && rhs.kind == .completed
+                    }
+                    return lhs.updatedAt > rhs.updatedAt
+                },
                 taskTitle: resolvedTitle,
                 latestUserLine: resolvedUserLine,
                 event: resolvedEvent,
+                startedAt: sessionStartedAt,
                 updatedAt: updatedAt
             )
+        }
+
+        private mutating func recordSubagentSpawn(from payload: [String: JSONValue], timestamp: Date?) {
+            guard let parentID = CodexTranscriptParser.stringValue(in: payload, keys: ["sender_thread_id", "parent_thread_id"]),
+                  let childID = CodexTranscriptParser.stringValue(in: payload, keys: ["new_thread_id"]) else {
+                return
+            }
+
+            let startedAt = timestamp ?? Date.distantPast
+            let name = CodexTranscriptParser.stringValue(in: payload, keys: ["new_agent_nickname"])
+                ?? CodexTranscriptParser.stringValue(in: payload, keys: ["new_agent_role"])
+                ?? "Subagent"
+            let prompt = CodexTranscriptParser.cleanedInlineText(
+                CodexTranscriptParser.stringValue(in: payload, keys: ["prompt"])
+            ) ?? "Working"
+
+            spawnedSubagents[childID] = CodexSubagentSnapshot(
+                sessionID: childID,
+                parentSessionID: parentID,
+                name: name,
+                role: CodexTranscriptParser.stringValue(in: payload, keys: ["new_agent_role"]),
+                taskTitle: prompt,
+                latestSummary: nil,
+                kind: .thinking,
+                startedAt: startedAt,
+                updatedAt: startedAt
+            )
+        }
+
+        private mutating func recordSubagentNotification(from payload: [String: JSONValue], timestamp: Date?) {
+            guard let text = CodexTranscriptParser.messageText(from: payload),
+                  let notification = CodexTranscriptParser.subagentNotification(from: text),
+                  var subagent = spawnedSubagents[notification.sessionID] else {
+                return
+            }
+
+            subagent.latestSummary = notification.summary
+            subagent.kind = .completed
+            subagent.updatedAt = timestamp ?? subagent.updatedAt
+            spawnedSubagents[notification.sessionID] = subagent
         }
     }
 
@@ -183,6 +315,11 @@ public enum CodexTranscriptParser {
         var taskTitle: String?
         var latestUserLine: String?
         var completedAt: Date
+    }
+
+    private struct SubagentNotification {
+        var sessionID: String
+        var summary: String
     }
 
     private static let readOnlyCommands: Set<String> = [
@@ -405,6 +542,62 @@ public enum CodexTranscriptParser {
             }
         }
         return nil
+    }
+
+    private static func parentSessionID(in payload: [String: JSONValue]) -> String? {
+        subagentThreadSpawn(in: payload).flatMap {
+            stringValue(in: $0, keys: ["parent_thread_id", "parentThreadID", "parent_id"])
+        }
+    }
+
+    private static func subagentThreadSpawn(in payload: [String: JSONValue]) -> [String: JSONValue]? {
+        guard let source = payload["source"]?.objectValue,
+              let subagent = source["subagent"]?.objectValue,
+              let threadSpawn = subagent["thread_spawn"]?.objectValue else {
+            return nil
+        }
+        return threadSpawn
+    }
+
+    private static func messageText(from payload: [String: JSONValue]) -> String? {
+        guard let content = payload["content"]?.arrayValue else {
+            return nil
+        }
+
+        for item in content {
+            guard let object = item.objectValue,
+                  let text = stringValue(in: object, keys: ["text"]) else {
+                continue
+            }
+            return text
+        }
+        return nil
+    }
+
+    private static func subagentNotification(from text: String) -> SubagentNotification? {
+        guard let openRange = text.range(of: "<subagent_notification>"),
+              let closeRange = text.range(of: "</subagent_notification>", range: openRange.upperBound..<text.endIndex) else {
+            return nil
+        }
+
+        let jsonText = text[openRange.upperBound..<closeRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(jsonText.utf8)),
+              let object = value.objectValue,
+              let sessionID = stringValue(in: object, keys: ["agent_path"]) else {
+            return nil
+        }
+
+        let summary: String?
+        if let status = object["status"]?.objectValue {
+            summary = stringValue(in: status, keys: ["completed", "failed", "cancelled", "status"])
+        } else {
+            summary = nil
+        }
+
+        return SubagentNotification(
+            sessionID: sessionID,
+            summary: clipped(cleanedInlineText(summary), limit: 96) ?? "Completed"
+        )
     }
 
     private static func cleanedInlineText(_ value: String?) -> String? {

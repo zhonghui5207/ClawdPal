@@ -12,6 +12,8 @@ public struct ClaudeHookPayload: Codable, Equatable, Sendable {
     public var notificationType: String?
     public var source: String?
     public var reason: String?
+    public var subagentType: String?
+    public var description: String?
 
     enum CodingKeys: String, CodingKey {
         case hookEventName = "hook_event_name"
@@ -25,5 +27,7 @@ public struct ClaudeHookPayload: Codable, Equatable, Sendable {
         case notificationType = "notification_type"
         case source
         case reason
+        case subagentType = "subagent_type"
+        case description
     }
 }
