@@ -86,6 +86,38 @@ open .build/ClawdPal.app
 
 This creates a local, unsigned development app bundle at `.build/ClawdPal.app`. It is intended for local use and testing.
 
+For daily local use, install the app bundle to a stable location:
+
+```sh
+scripts/install-app.sh
+```
+
+By default this installs ClawdPal to `~/Applications/ClawdPal.app`, installs Claude Code and Codex hooks, and starts the installed app. Keeping the app in a stable path makes macOS permissions and hook paths less fragile than running directly from `.build`.
+
+To install somewhere else:
+
+```sh
+CLAWDPAL_INSTALL_DIR=/Applications scripts/install-app.sh
+```
+
+## Packaging
+
+Create a ZIP package:
+
+```sh
+scripts/package-zip.sh
+```
+
+The package is written to:
+
+```text
+dist/ClawdPal.zip
+```
+
+This ZIP is suitable for attaching to a GitHub Release while the project is still in early development.
+
+Current release packages are ad-hoc signed but not notarized. On another Mac, the first launch may require explicit approval in macOS security settings.
+
 ## Install Hooks
 
 You can install hooks from the app through the right-click menu:
@@ -119,6 +151,35 @@ The setup tool backs up existing settings before writing. Uninstall only removes
 
 The hook command is fail-open: if ClawdPal is closed or unreachable, Claude Code and Codex keep running.
 
+If you use `scripts/install-app.sh`, hooks are installed with the bundled hook binary at:
+
+```text
+~/Applications/ClawdPal.app/Contents/MacOS/ClawdPalHooks
+```
+
+This is the recommended local setup because the hook path stays stable across rebuilds.
+
+## Permissions
+
+ClawdPal only needs macOS Accessibility permission for terminal-window control.
+
+Claude Code sessions use Terminal Jump to return to the matching terminal window. That requires Accessibility permission so ClawdPal can inspect and raise the correct window.
+
+Codex sessions do not use terminal-window control. Their Jump action opens the Codex client directly.
+
+You can check permission state in:
+
+```text
+Right click ClawdPal -> Hook Manage -> Terminal Access
+```
+
+States:
+
+- `Ready`: Accessibility permission is enabled.
+- `Needs access`: click the gear button to open macOS Accessibility settings.
+
+ClawdPal checks permission state before using terminal-window control. It does not repeatedly trigger the system permission prompt.
+
 ## Development
 
 Run the app directly:
@@ -143,6 +204,18 @@ Build the local app bundle:
 
 ```sh
 scripts/build-app.sh
+```
+
+Install the app and hooks for local daily use:
+
+```sh
+scripts/install-app.sh
+```
+
+Build a ZIP package:
+
+```sh
+scripts/package-zip.sh
 ```
 
 The generated bundle includes:
