@@ -34,6 +34,13 @@ The app is local-first. Hook events are sent through a local Unix socket, transc
   <img src="docs/screenshots/subagents-working.png" alt="ClawdPal session panel showing two active Codex subagents" width="360">
 </p>
 
+<p>
+  <img src="docs/screenshots/state-reading.png" alt="ClawdPal reading state" width="240">
+  <img src="docs/screenshots/state-command.png" alt="ClawdPal command state" width="240">
+  <img src="docs/screenshots/state-editing.png" alt="ClawdPal editing state" width="240">
+  <img src="docs/screenshots/state-done.png" alt="ClawdPal done state" width="240">
+</p>
+
 ## Supported Integrations
 
 ClawdPal currently supports:
