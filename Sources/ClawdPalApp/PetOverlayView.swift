@@ -92,6 +92,9 @@ struct PetOverlayView: View {
             Button("Jump Back") {
                 appModel.jumpBackToTerminal()
             }
+            Button("Open Codex") {
+                appModel.openCodexClient()
+            }
             Button("Hook Manage") {
                 withAnimation(.easeOut(duration: Layout.panelFadeDuration)) {
                     isPanelOpen = true

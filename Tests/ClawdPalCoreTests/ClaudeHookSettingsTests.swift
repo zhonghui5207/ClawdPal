@@ -71,6 +71,45 @@ struct ClaudeHookSettingsTests {
     }
 
     @Test
+    func installReplacesLegacyClawdPetHookGroup() throws {
+        let directory = try temporaryDirectory()
+        let settingsPath = directory.appendingPathComponent("settings.json").path
+        let hookPath = try fakeExecutable(in: directory)
+
+        try """
+        {
+          "hooks": {
+            "PreToolUse": [
+              {
+                "matcher": "*",
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "'/tmp/ClawdPetHooks' --source claude"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!.write(to: URL(fileURLWithPath: settingsPath))
+
+        _ = try ClaudeHookSettings.install(
+            settingsPath: settingsPath,
+            hookBinaryPath: hookPath,
+            events: ["PreToolUse"]
+        )
+
+        let settings = try readSettings(settingsPath)
+        let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
+        let groups = try #require(hooks["PreToolUse"]?.arrayValue)
+
+        #expect(groups.count == 1)
+        #expect(groups.contains { containsCommand($0, "ClawdPalHooks") })
+        #expect(!groups.contains { containsCommand($0, "ClawdPetHooks") })
+    }
+
+    @Test
     func uninstallRemovesOnlyClawdPalHooks() throws {
         let directory = try temporaryDirectory()
         let settingsPath = directory.appendingPathComponent("settings.json").path

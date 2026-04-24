@@ -31,6 +31,7 @@ public enum ClaudeHookSettingsError: Error, LocalizedError {
 
 public enum ClaudeHookSettings {
     public static let clawdPalMarker = "ClawdPalHooks"
+    private static let legacyMarkers = ["ClawdPetHooks"]
 
     public static let defaultEvents = [
         "UserPromptSubmit",
@@ -197,7 +198,7 @@ public enum ClaudeHookSettings {
                   case .string(let command)? = hookObject["command"] else {
                 return false
             }
-            return command.contains(clawdPalMarker)
+            return command.contains(clawdPalMarker) || legacyMarkers.contains { command.contains($0) }
         }
     }
 

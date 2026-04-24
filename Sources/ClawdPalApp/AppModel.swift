@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
         var bubbleText: String
         var workingDirectory: String?
         var workingDirectoryText: String
+        var terminalWindowContext: TerminalWindowContext?
         var shortSessionID: String
         var updatedAt: Date
         var priority: Int
@@ -75,6 +76,7 @@ final class AppModel: ObservableObject {
         var updatedAt: Date
         var taskTitle: String?
         var latestUserLine: String?
+        var terminalWindowContext: TerminalWindowContext?
         var pendingSubagent: PendingSubagent?
         var subagents: [String: TrackedSubagent] = [:]
     }
@@ -156,11 +158,38 @@ final class AppModel: ObservableObject {
     }
 
     func jumpBackToTerminal() {
-        bubbleText = terminalJumpService.activateTerminal()
+        if let focusedSession, shouldOpenCodexClient(for: focusedSession) {
+            bubbleText = terminalJumpService.activateCodex()
+            return
+        }
+
+        bubbleText = terminalJumpService.jump(
+            to: focusedSession?.workingDirectory ?? lastEvent?.workingDirectory,
+            sessionID: focusedSession?.sessionID ?? lastEvent?.sessionID,
+            windowContext: focusedSession?.terminalWindowContext
+        )
     }
 
     func jumpToSession(_ session: SessionDisplay) {
-        bubbleText = terminalJumpService.jump(to: session.workingDirectory)
+        if shouldOpenCodexClient(for: session) {
+            bubbleText = terminalJumpService.activateCodex()
+            return
+        }
+
+        bubbleText = terminalJumpService.jump(
+            to: session.workingDirectory,
+            sessionID: session.sessionID,
+            windowContext: session.terminalWindowContext,
+            fallback: .none
+        )
+    }
+
+    func openCodexClient() {
+        bubbleText = terminalJumpService.activateCodex()
+    }
+
+    private func shouldOpenCodexClient(for session: SessionDisplay) -> Bool {
+        session.source == "Codex"
     }
 
     func resetWindowPosition() {
@@ -505,6 +534,12 @@ final class AppModel: ObservableObject {
 
         tracked.event = envelope.event
         tracked.updatedAt = envelope.receivedAt
+        if let terminalWindowContext = terminalJumpService.currentTerminalWindowContext(
+            sessionID: sessionID,
+            workingDirectory: envelope.event.workingDirectory
+        ) {
+            tracked.terminalWindowContext = terminalWindowContext
+        }
         if let latestUserLine = cleanedMessage(envelope.event.message, prefix: "Prompt:"), !latestUserLine.isEmpty {
             tracked.latestUserLine = latestUserLine
         }
@@ -1092,6 +1127,7 @@ final class AppModel: ObservableObject {
             bubbleText: effectiveBubbleText,
             workingDirectory: tracked.event.workingDirectory,
             workingDirectoryText: workingDirectoryText(for: tracked.event.workingDirectory),
+            terminalWindowContext: tracked.terminalWindowContext,
             shortSessionID: shortenedSessionID(sessionID),
             updatedAt: tracked.updatedAt,
             priority: subagents.isEmpty ? eventPriority(for: tracked.event.kind) : 6,

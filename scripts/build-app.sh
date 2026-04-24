@@ -19,11 +19,6 @@ cp "$BIN_DIR/ClawdPalApp" "$MACOS_DIR/ClawdPalApp"
 cp "$BIN_DIR/ClawdPalHooks" "$MACOS_DIR/ClawdPalHooks"
 cp "$BIN_DIR/ClawdPalSetup" "$MACOS_DIR/ClawdPalSetup"
 
-if [ -d "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" ]; then
-  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" "$APP_DIR/ClawdPal_ClawdPalApp.bundle"
-  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle/Resources" "$RESOURCES_DIR/ClawdPalResources"
-fi
-
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -54,5 +49,16 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 PLIST
 
 chmod +x "$MACOS_DIR/ClawdPalApp" "$MACOS_DIR/ClawdPalHooks" "$MACOS_DIR/ClawdPalSetup"
+
+codesign --force --sign - --identifier studio.lovexai.ClawdPal "$MACOS_DIR/ClawdPalApp" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier studio.lovexai.ClawdPal.Hooks "$MACOS_DIR/ClawdPalHooks" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier studio.lovexai.ClawdPal.Setup "$MACOS_DIR/ClawdPalSetup" >/dev/null 2>&1 || true
+
+if [ -d "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" ]; then
+  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" "$APP_DIR/ClawdPal_ClawdPalApp.bundle"
+  cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle/Resources" "$RESOURCES_DIR/ClawdPalResources"
+fi
+
+codesign --force --sign - "$APP_DIR" >/dev/null 2>&1 || true
 
 echo "Built $APP_DIR"

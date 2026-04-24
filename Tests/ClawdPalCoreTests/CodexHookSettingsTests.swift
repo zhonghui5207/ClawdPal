@@ -67,6 +67,45 @@ struct CodexHookSettingsTests {
     }
 
     @Test
+    func installReplacesLegacyClawdPetHook() throws {
+        let directory = try temporaryDirectory()
+        let settingsPath = directory.appendingPathComponent("hooks.json").path
+        let hookPath = try fakeExecutable(in: directory)
+
+        try """
+        {
+          "hooks": {
+            "Stop": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "'/tmp/ClawdPetHooks' --source codex",
+                    "timeout": 5
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!.write(to: URL(fileURLWithPath: settingsPath))
+
+        _ = try CodexHookSettings.install(
+            settingsPath: settingsPath,
+            hookBinaryPath: hookPath,
+            events: ["Stop"]
+        )
+
+        let settings = try readSettings(settingsPath)
+        let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
+        let groups = try #require(hooks["Stop"]?.arrayValue)
+
+        #expect(groups.count == 1)
+        #expect(groups.contains { containsCommand($0, "ClawdPalHooks") })
+        #expect(!groups.contains { containsCommand($0, "ClawdPetHooks") })
+    }
+
+    @Test
     func uninstallRemovesOnlyClawdPalHooks() throws {
         let directory = try temporaryDirectory()
         let settingsPath = directory.appendingPathComponent("hooks.json").path

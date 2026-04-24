@@ -2,6 +2,7 @@ import Foundation
 
 public enum CodexHookSettings {
     public static let clawdPalMarker = "ClawdPalHooks"
+    private static let legacyMarkers = ["ClawdPetHooks"]
 
     public static let defaultEvents = [
         "SessionStart",
@@ -137,7 +138,7 @@ public enum CodexHookSettings {
                   case .string(let command)? = hookObject["command"] else {
                 return false
             }
-            return command.contains(clawdPalMarker)
+            return command.contains(clawdPalMarker) || legacyMarkers.contains { command.contains($0) }
         }
     }
 
