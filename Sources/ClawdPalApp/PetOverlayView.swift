@@ -19,6 +19,7 @@ struct PetOverlayView: View {
         static let stackSpacing: CGFloat = 4
         static let verticalPadding: CGFloat = 8
         static let panelFadeDuration: CGFloat = 0.12
+        static let bubbleHideDelay: UInt64 = 5_000_000_000
     }
 
     @ObservedObject var appModel: AppModel
@@ -27,8 +28,12 @@ struct PetOverlayView: View {
     @State private var measuredPanelHeight: CGFloat = 0
     @State private var pointerOffset: CGSize = .zero
     @State private var isPetPressed = false
+    @State private var isBubbleVisible = true
 
     var body: some View {
+        let bubbleKind = appModel.focusedSession?.kind ?? appModel.lastEvent?.kind ?? .idle
+        let bubbleKey = "\(bubbleKind.rawValue)-\(appModel.bubbleText)"
+
         ZStack(alignment: .bottom) {
             VStack(spacing: Layout.stackSpacing) {
                 if isPanelOpen {
@@ -41,12 +46,18 @@ struct PetOverlayView: View {
                         .transition(.opacity)
                 }
 
-                if !isPanelOpen {
-                    StatusBubbleView(text: appModel.bubbleText, kind: appModel.focusedSession?.kind ?? appModel.lastEvent?.kind ?? .idle)
+                if !isPanelOpen, isBubbleVisible {
+                    StatusBubbleView(text: appModel.bubbleText, kind: bubbleKind)
                         .frame(maxWidth: 260)
+                        .transition(.scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
                 }
 
-                PetSpriteView(mood: appModel.mood, pointerOffset: pointerOffset, isPressed: isPetPressed)
+                PetSpriteView(
+                    mood: appModel.mood,
+                    pointerOffset: pointerOffset,
+                    isPressed: isPetPressed,
+                    eventKind: bubbleKind
+                )
                     .frame(width: 210, height: 150)
                     .contentShape(Rectangle())
                     .overlay(
@@ -85,6 +96,9 @@ struct PetOverlayView: View {
             }
             .frame(width: 0, height: 0)
         )
+        .task(id: bubbleKey) {
+            await scheduleBubbleVisibility(for: bubbleKind)
+        }
         .onChange(of: isPanelOpen) { isOpen in
             NotificationCenter.default.post(
                 name: .clawdPalSetPanelOpen,
@@ -122,6 +136,29 @@ struct PetOverlayView: View {
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
+        }
+    }
+
+    @MainActor
+    private func scheduleBubbleVisibility(for kind: AgentEventKind) async {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.76)) {
+            isBubbleVisible = true
+        }
+
+        guard shouldAutoHideBubble(for: kind) else { return }
+        try? await Task.sleep(nanoseconds: Layout.bubbleHideDelay)
+        if Task.isCancelled { return }
+        withAnimation(.easeOut(duration: 0.22)) {
+            isBubbleVisible = false
+        }
+    }
+
+    private func shouldAutoHideBubble(for kind: AgentEventKind) -> Bool {
+        switch kind {
+        case .idle, .unknown, .completed:
+            return true
+        case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+            return false
         }
     }
 

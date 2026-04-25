@@ -3,8 +3,6 @@ import SwiftUI
 
 private enum BubbleMotion {
     static let popScale: CGFloat = 1.18
-    static let dimmedOpacity: Double = 0.48
-    static let dimDelayNanoseconds: UInt64 = 5_000_000_000
     static let maxTypedCharacters = 80
 }
 
@@ -16,7 +14,6 @@ struct StatusBubbleView: View {
     @State private var popScale: CGFloat = 1.0
     @State private var doneLift: CGFloat = 0.0
     @State private var shakeX: CGFloat = 0.0
-    @State private var bubbleOpacity: Double = 1.0
 
     var body: some View {
         let style = BubbleStyle(kind: kind)
@@ -41,17 +38,15 @@ struct StatusBubbleView: View {
                     .stroke(style.accent.opacity(0.36), lineWidth: 1)
             )
 
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
+            BubbleTail()
                 .fill(style.background.opacity(style.opacity))
-                .frame(width: 13, height: 13)
-                .rotationEffect(.degrees(45))
-                .offset(x: 2, y: -6)
+                .frame(width: 18, height: 8)
+                .offset(x: 2, y: -1)
         }
             .fixedSize(horizontal: false, vertical: true)
             .shadow(color: .black.opacity(0.24), radius: 8, y: 4)
             .scaleEffect(popScale, anchor: .bottom)
             .offset(x: shakeX, y: doneLift)
-            .opacity(bubbleOpacity)
             .onAppear {
                 displayedText = text
             }
@@ -63,7 +58,6 @@ struct StatusBubbleView: View {
     @MainActor
     private func animateMessage(_ message: String) async {
         displayedText = ""
-        bubbleOpacity = 1.0
 
         withAnimation(.spring(response: 0.24, dampingFraction: 0.58)) {
             popScale = BubbleMotion.popScale
@@ -99,22 +93,6 @@ struct StatusBubbleView: View {
         if characters.count > limit {
             displayedText += "..."
         }
-
-        guard shouldDimAfterDelay else { return }
-        try? await Task.sleep(nanoseconds: BubbleMotion.dimDelayNanoseconds)
-        if Task.isCancelled { return }
-        withAnimation(.easeOut(duration: 0.4)) {
-            bubbleOpacity = BubbleMotion.dimmedOpacity
-        }
-    }
-
-    private var shouldDimAfterDelay: Bool {
-        switch kind {
-        case .idle, .unknown, .completed:
-            return true
-        case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
-            return false
-        }
     }
 
     private func isCompletionMessage(_ message: String) -> Bool {
@@ -132,6 +110,23 @@ struct StatusBubbleView: View {
             }
             try? await Task.sleep(nanoseconds: 55_000_000)
         }
+    }
+}
+
+private struct BubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX, y: rect.maxY),
+            control: CGPoint(x: rect.midX * 0.62, y: rect.minY)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY),
+            control: CGPoint(x: rect.midX * 1.38, y: rect.minY)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 

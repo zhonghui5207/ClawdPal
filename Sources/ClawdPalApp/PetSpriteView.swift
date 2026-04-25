@@ -20,10 +20,14 @@ struct PetSpriteView: View {
     var pointerOffset: CGSize = .zero
     var isPressed = false
     var isAnimated = true
+    var eventKind: AgentEventKind = .idle
 
     @State private var breathing = false
     @State private var floating = false
     @State private var blinkAmount: CGFloat = 0.0
+    @State private var reactionX: CGFloat = 0.0
+    @State private var reactionY: CGFloat = 0.0
+    @State private var reactionTilt: CGFloat = 0.0
 
     var body: some View {
         Group {
@@ -40,8 +44,8 @@ struct PetSpriteView: View {
         }
         .overlay(blinkOverlay)
         .scaleEffect(spriteScale, anchor: .center)
-        .rotationEffect(.degrees(Double(animatedPointerOffset.width * PetSpriteMotion.pointerTilt)), anchor: .bottom)
-        .offset(x: animatedPointerOffset.width * PetSpriteMotion.pointerX, y: verticalOffset)
+        .rotationEffect(.degrees(Double(animatedPointerOffset.width * PetSpriteMotion.pointerTilt + reactionTilt)), anchor: .bottom)
+        .offset(x: animatedPointerOffset.width * PetSpriteMotion.pointerX + reactionX, y: verticalOffset + reactionY)
         .contentShape(Rectangle())
         .accessibilityLabel(Text(mood.displayName))
         .onAppear {
@@ -61,6 +65,10 @@ struct PetSpriteView: View {
                 if Task.isCancelled { break }
                 await blink()
             }
+        }
+        .task(id: eventKind) {
+            guard isAnimated else { return }
+            await react(to: eventKind)
         }
     }
 
@@ -121,6 +129,35 @@ struct PetSpriteView: View {
         try? await Task.sleep(nanoseconds: 85_000_000)
         withAnimation(.easeIn(duration: 0.08)) {
             blinkAmount = 0.0
+        }
+    }
+
+    @MainActor
+    private func react(to kind: AgentEventKind) async {
+        switch kind {
+        case .completed:
+            withAnimation(.easeOut(duration: 0.10)) {
+                reactionY = 3
+            }
+            try? await Task.sleep(nanoseconds: 95_000_000)
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) {
+                reactionY = 0
+            }
+        case .error, .permissionRequest:
+            let frames: [(CGFloat, CGFloat)] = [(-4, -1.2), (3, 0.9), (-2, -0.5), (0, 0)]
+            for (x, tilt) in frames {
+                withAnimation(.easeInOut(duration: 0.06)) {
+                    reactionX = x
+                    reactionTilt = tilt
+                }
+                try? await Task.sleep(nanoseconds: 60_000_000)
+            }
+        default:
+            withAnimation(.easeOut(duration: 0.12)) {
+                reactionX = 0
+                reactionY = 0
+                reactionTilt = 0
+            }
         }
     }
 }
