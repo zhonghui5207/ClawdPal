@@ -119,6 +119,7 @@ final class AppModel: ObservableObject {
     private let focusHoldDuration: TimeInterval = 5
     private let subagentLifetime: TimeInterval = 30 * 60
     private let completedSubagentLifetime: TimeInterval = 8
+    private let demoSessionPrefix = "clawdpal-demo-"
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
     private var transcriptPollTimer: DispatchSourceTimer?
@@ -408,6 +409,12 @@ final class AppModel: ObservableObject {
         completionTimer?.invalidate()
         lastEvent = envelope.event
         lastSource = displaySource(envelope.source)
+        if isDemoSession(envelope.event.sessionID) {
+            let presentation = PetMoodMapper.presentation(for: envelope.event)
+            mood = presentation.mood
+            bubbleText = "\(lastSource): \(presentation.bubbleText)"
+            return
+        }
         updateTrackedSessions(for: envelope, source: lastSource)
         if sourceSections.isEmpty {
             let presentation = PetMoodMapper.presentation(for: envelope.event)
@@ -424,6 +431,10 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func isDemoSession(_ sessionID: String?) -> Bool {
+        sessionID?.hasPrefix(demoSessionPrefix) == true
     }
 
     private func displaySource(_ source: String) -> String {

@@ -1,6 +1,13 @@
 import ClawdPalCore
 import SwiftUI
 
+private enum BubbleMotion {
+    static let popScale: CGFloat = 1.18
+    static let dimmedOpacity: Double = 0.48
+    static let dimDelayNanoseconds: UInt64 = 5_000_000_000
+    static let maxTypedCharacters = 80
+}
+
 struct StatusBubbleView: View {
     var text: String
     var kind: AgentEventKind = .idle
@@ -9,6 +16,7 @@ struct StatusBubbleView: View {
     @State private var popScale: CGFloat = 1.0
     @State private var doneLift: CGFloat = 0.0
     @State private var shakeX: CGFloat = 0.0
+    @State private var bubbleOpacity: Double = 1.0
 
     var body: some View {
         let style = BubbleStyle(kind: kind)
@@ -43,6 +51,7 @@ struct StatusBubbleView: View {
             .shadow(color: .black.opacity(0.24), radius: 8, y: 4)
             .scaleEffect(popScale, anchor: .bottom)
             .offset(x: shakeX, y: doneLift)
+            .opacity(bubbleOpacity)
             .onAppear {
                 displayedText = text
             }
@@ -54,9 +63,10 @@ struct StatusBubbleView: View {
     @MainActor
     private func animateMessage(_ message: String) async {
         displayedText = ""
+        bubbleOpacity = 1.0
 
         withAnimation(.spring(response: 0.24, dampingFraction: 0.58)) {
-            popScale = 1.18
+            popScale = BubbleMotion.popScale
         }
         try? await Task.sleep(nanoseconds: 130_000_000)
         withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
@@ -78,7 +88,7 @@ struct StatusBubbleView: View {
         }
 
         let characters = Array(message)
-        let limit = min(characters.count, 80)
+        let limit = min(characters.count, BubbleMotion.maxTypedCharacters)
         for index in 0..<limit {
             if Task.isCancelled { return }
             displayedText = String(characters[0...index])
@@ -88,6 +98,22 @@ struct StatusBubbleView: View {
 
         if characters.count > limit {
             displayedText += "..."
+        }
+
+        guard shouldDimAfterDelay else { return }
+        try? await Task.sleep(nanoseconds: BubbleMotion.dimDelayNanoseconds)
+        if Task.isCancelled { return }
+        withAnimation(.easeOut(duration: 0.4)) {
+            bubbleOpacity = BubbleMotion.dimmedOpacity
+        }
+    }
+
+    private var shouldDimAfterDelay: Bool {
+        switch kind {
+        case .idle, .unknown, .completed:
+            return true
+        case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
+            return false
         }
     }
 

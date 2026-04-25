@@ -61,7 +61,7 @@ struct ControlPanelView: View {
                     Button {
                         appModel.setMood(mood)
                     } label: {
-                        PetSpriteView(mood: mood)
+                        PetSpriteView(mood: mood, isAnimated: false)
                             .frame(width: 42, height: 40)
                             .padding(5)
                             .background(selectionBackground(for: mood), in: RoundedRectangle(cornerRadius: 6))

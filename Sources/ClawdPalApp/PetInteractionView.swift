@@ -5,12 +5,14 @@ struct PetInteractionView: NSViewRepresentable {
     var onClick: () -> Void
     var onPointerMove: (CGSize) -> Void = { _ in }
     var onPointerExit: () -> Void = {}
+    var onPressChanged: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> InteractionNSView {
         let view = InteractionNSView()
         view.onClick = onClick
         view.onPointerMove = onPointerMove
         view.onPointerExit = onPointerExit
+        view.onPressChanged = onPressChanged
         return view
     }
 
@@ -18,6 +20,7 @@ struct PetInteractionView: NSViewRepresentable {
         nsView.onClick = onClick
         nsView.onPointerMove = onPointerMove
         nsView.onPointerExit = onPointerExit
+        nsView.onPressChanged = onPressChanged
     }
 }
 
@@ -25,6 +28,7 @@ final class InteractionNSView: NSView {
     var onClick: (() -> Void)?
     var onPointerMove: ((CGSize) -> Void)?
     var onPointerExit: (() -> Void)?
+    var onPressChanged: ((Bool) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -57,6 +61,7 @@ final class InteractionNSView: NSView {
             super.mouseDown(with: event)
             return
         }
+        onPressChanged?(true)
 
         let originalWindowFrame = window.frame
         let originalMouseLocation = NSEvent.mouseLocation
@@ -85,6 +90,7 @@ final class InteractionNSView: NSView {
                 )
                 window.setFrameOrigin(newOrigin)
             case .leftMouseUp:
+                onPressChanged?(false)
                 if didDrag {
                     NotificationCenter.default.post(name: .clawdPalDragEnded, object: window)
                 } else {
@@ -95,6 +101,7 @@ final class InteractionNSView: NSView {
                 break
             }
         }
+        onPressChanged?(false)
     }
 
     private func publishPointerOffset(from event: NSEvent) {

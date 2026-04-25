@@ -26,6 +26,7 @@ struct PetOverlayView: View {
     @State private var window: NSWindow?
     @State private var measuredPanelHeight: CGFloat = 0
     @State private var pointerOffset: CGSize = .zero
+    @State private var isPetPressed = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -45,7 +46,7 @@ struct PetOverlayView: View {
                         .frame(maxWidth: 260)
                 }
 
-                PetSpriteView(mood: appModel.mood, pointerOffset: pointerOffset)
+                PetSpriteView(mood: appModel.mood, pointerOffset: pointerOffset, isPressed: isPetPressed)
                     .frame(width: 210, height: 150)
                     .contentShape(Rectangle())
                     .overlay(
@@ -60,6 +61,10 @@ struct PetOverlayView: View {
                         } onPointerExit: {
                             withAnimation(.spring(response: 0.36, dampingFraction: 0.76)) {
                                 pointerOffset = .zero
+                            }
+                        } onPressChanged: { isPressed in
+                            withAnimation(.spring(response: 0.18, dampingFraction: 0.70)) {
+                                isPetPressed = isPressed
                             }
                         }
                     )

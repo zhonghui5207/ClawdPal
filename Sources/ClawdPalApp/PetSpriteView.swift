@@ -2,9 +2,24 @@ import AppKit
 import ClawdPalCore
 import SwiftUI
 
+private enum PetSpriteMotion {
+    static let breathScale: CGFloat = 1.01
+    static let restScale: CGFloat = 0.995
+    static let pressedScale: CGFloat = 0.985
+    static let floatOffset: CGFloat = 3
+    static let pointerTilt: CGFloat = 2.8
+    static let pointerX: CGFloat = 4.5
+    static let pointerY: CGFloat = 2
+    static let breathDuration: TimeInterval = 2.8
+    static let floatDuration: TimeInterval = 4.2
+    static let blinkRange: ClosedRange<Double> = 2.6...5.6
+}
+
 struct PetSpriteView: View {
     var mood: PetMood
     var pointerOffset: CGSize = .zero
+    var isPressed = false
+    var isAnimated = true
 
     @State private var breathing = false
     @State private var floating = false
@@ -24,27 +39,45 @@ struct PetSpriteView: View {
             }
         }
         .overlay(blinkOverlay)
-        .scaleEffect(breathing ? 1.01 : 0.995, anchor: .center)
-        .rotationEffect(.degrees(Double(pointerOffset.width * 2.8)), anchor: .bottom)
-        .offset(x: pointerOffset.width * 4.5, y: (floating ? -3.0 : 3.0) - pointerOffset.height * 2.0)
+        .scaleEffect(spriteScale, anchor: .center)
+        .rotationEffect(.degrees(Double(animatedPointerOffset.width * PetSpriteMotion.pointerTilt)), anchor: .bottom)
+        .offset(x: animatedPointerOffset.width * PetSpriteMotion.pointerX, y: verticalOffset)
         .contentShape(Rectangle())
         .accessibilityLabel(Text(mood.displayName))
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+            guard isAnimated else { return }
+            withAnimation(.easeInOut(duration: PetSpriteMotion.breathDuration).repeatForever(autoreverses: true)) {
                 breathing = true
             }
-            withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: PetSpriteMotion.floatDuration).repeatForever(autoreverses: true)) {
                 floating = true
             }
         }
         .task {
+            guard isAnimated else { return }
             while !Task.isCancelled {
-                let delay = UInt64(Double.random(in: 2.6...5.6) * 1_000_000_000)
+                let delay = UInt64(Double.random(in: PetSpriteMotion.blinkRange) * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: delay)
                 if Task.isCancelled { break }
                 await blink()
             }
         }
+    }
+
+    private var spriteScale: CGFloat {
+        guard isAnimated else { return 1 }
+        if isPressed { return PetSpriteMotion.pressedScale }
+        return breathing ? PetSpriteMotion.breathScale : PetSpriteMotion.restScale
+    }
+
+    private var verticalOffset: CGFloat {
+        guard isAnimated else { return 0 }
+        let floatY = floating ? -PetSpriteMotion.floatOffset : PetSpriteMotion.floatOffset
+        return floatY - animatedPointerOffset.height * PetSpriteMotion.pointerY
+    }
+
+    private var animatedPointerOffset: CGSize {
+        isAnimated ? pointerOffset : .zero
     }
 
     private var blinkOverlay: some View {
