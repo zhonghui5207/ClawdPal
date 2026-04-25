@@ -3,22 +3,54 @@ import SwiftUI
 
 struct PetInteractionView: NSViewRepresentable {
     var onClick: () -> Void
+    var onPointerMove: (CGSize) -> Void = { _ in }
+    var onPointerExit: () -> Void = {}
 
     func makeNSView(context: Context) -> InteractionNSView {
         let view = InteractionNSView()
         view.onClick = onClick
+        view.onPointerMove = onPointerMove
+        view.onPointerExit = onPointerExit
         return view
     }
 
     func updateNSView(_ nsView: InteractionNSView, context: Context) {
         nsView.onClick = onClick
+        nsView.onPointerMove = onPointerMove
+        nsView.onPointerExit = onPointerExit
     }
 }
 
 final class InteractionNSView: NSView {
     var onClick: (() -> Void)?
+    var onPointerMove: ((CGSize) -> Void)?
+    var onPointerExit: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: bounds,
+                options: [.activeAlways, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
+                owner: self
+            )
+        )
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        publishPointerOffset(from: event)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        publishPointerOffset(from: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onPointerExit?()
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard let window else {
@@ -63,5 +95,19 @@ final class InteractionNSView: NSView {
                 break
             }
         }
+    }
+
+    private func publishPointerOffset(from event: NSEvent) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        let x = ((location.x - bounds.midX) / max(bounds.width / 2, 1)).clamped(to: -1...1)
+        let y = ((location.y - bounds.midY) / max(bounds.height / 2, 1)).clamped(to: -1...1)
+        onPointerMove?(CGSize(width: x, height: y))
+    }
+}
+
+private extension CGFloat {
+    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }

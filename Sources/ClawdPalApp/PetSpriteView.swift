@@ -4,11 +4,11 @@ import SwiftUI
 
 struct PetSpriteView: View {
     var mood: PetMood
+    var pointerOffset: CGSize = .zero
 
     @State private var breathing = false
     @State private var floating = false
-    @State private var squashX: CGFloat = 1.0
-    @State private var squashY: CGFloat = 1.0
+    @State private var blinkAmount: CGFloat = 0.0
 
     var body: some View {
         Group {
@@ -23,39 +23,71 @@ struct PetSpriteView: View {
                     .overlay(Text(mood.displayName).font(.caption).foregroundStyle(.black))
             }
         }
-        .scaleEffect(x: squashX, y: squashY, anchor: .center)
-        .scaleEffect(breathing ? 1.02 : 0.98, anchor: .center)
-        .offset(y: floating ? -0.8 : 0.8)
+        .overlay(blinkOverlay)
+        .scaleEffect(breathing ? 1.01 : 0.995, anchor: .center)
+        .rotationEffect(.degrees(Double(pointerOffset.width * 2.8)), anchor: .bottom)
+        .offset(x: pointerOffset.width * 4.5, y: (floating ? -3.0 : 3.0) - pointerOffset.height * 2.0)
         .contentShape(Rectangle())
         .accessibilityLabel(Text(mood.displayName))
         .onAppear {
-            withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
                 breathing = true
             }
-            withAnimation(.easeInOut(duration: 5.0).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
                 floating = true
             }
         }
         .task {
             while !Task.isCancelled {
-                let delay = UInt64(Double.random(in: 4.5...7.5) * 1_000_000_000)
+                let delay = UInt64(Double.random(in: 2.6...5.6) * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: delay)
                 if Task.isCancelled { break }
-                await perk()
+                await blink()
             }
         }
     }
 
-    @MainActor
-    private func perk() async {
-        withAnimation(.easeOut(duration: 0.09)) {
-            squashX = 1.04
-            squashY = 0.96
+    private var blinkOverlay: some View {
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            let originX = (geometry.size.width - side) / 2
+            let originY = (geometry.size.height - side) / 2
+
+            ZStack {
+                eyelid(in: side, originX: originX, originY: originY, centerX: 0.363)
+                eyelid(in: side, originX: originX, originY: originY, centerX: 0.637)
+            }
+            .opacity(blinkAmount)
         }
-        try? await Task.sleep(nanoseconds: 95_000_000)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
-            squashX = 1.0
-            squashY = 1.0
+        .allowsHitTesting(false)
+    }
+
+    private func eyelid(in side: CGFloat, originX: CGFloat, originY: CGFloat, centerX: CGFloat) -> some View {
+        let coverWidth = side * 0.058
+        let coverHeight = side * 0.12
+        let lineWidth = side * 0.038
+        let lineHeight = max(side * 0.007, 1.5)
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: side * 0.006)
+                .fill(Color(red: 0.92, green: 0.49, blue: 0.31))
+                .frame(width: coverWidth, height: coverHeight)
+
+            Capsule()
+                .fill(Color.black.opacity(0.86))
+                .frame(width: lineWidth, height: lineHeight)
+        }
+        .position(x: originX + side * centerX, y: originY + side * 0.333)
+    }
+
+    @MainActor
+    private func blink() async {
+        withAnimation(.easeOut(duration: 0.055)) {
+            blinkAmount = 1.0
+        }
+        try? await Task.sleep(nanoseconds: 85_000_000)
+        withAnimation(.easeIn(duration: 0.08)) {
+            blinkAmount = 0.0
         }
     }
 }

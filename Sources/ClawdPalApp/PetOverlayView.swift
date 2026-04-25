@@ -25,6 +25,7 @@ struct PetOverlayView: View {
     @State private var isPanelOpen = false
     @State private var window: NSWindow?
     @State private var measuredPanelHeight: CGFloat = 0
+    @State private var pointerOffset: CGSize = .zero
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -40,17 +41,25 @@ struct PetOverlayView: View {
                 }
 
                 if !isPanelOpen {
-                    StatusBubbleView(text: appModel.bubbleText)
+                    StatusBubbleView(text: appModel.bubbleText, kind: appModel.focusedSession?.kind ?? appModel.lastEvent?.kind ?? .idle)
                         .frame(maxWidth: 260)
                 }
 
-                PetSpriteView(mood: appModel.mood)
+                PetSpriteView(mood: appModel.mood, pointerOffset: pointerOffset)
                     .frame(width: 210, height: 150)
                     .contentShape(Rectangle())
                     .overlay(
                         PetInteractionView {
                             withAnimation(.easeOut(duration: Layout.panelFadeDuration)) {
                                 isPanelOpen.toggle()
+                            }
+                        } onPointerMove: { offset in
+                            withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.72)) {
+                                pointerOffset = offset
+                            }
+                        } onPointerExit: {
+                            withAnimation(.spring(response: 0.36, dampingFraction: 0.76)) {
+                                pointerOffset = .zero
                             }
                         }
                     )
