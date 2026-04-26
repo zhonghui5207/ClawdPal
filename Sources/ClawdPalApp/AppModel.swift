@@ -426,8 +426,7 @@ final class AppModel: ObservableObject {
            !hasActiveSubagents(source: lastSource, sessionID: envelope.event.sessionID) {
             completionTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
                 Task { @MainActor in
-                    self?.mood = .classic
-                    self?.bubbleText = "Idle"
+                    self?.refreshActiveSessions()
                 }
             }
         }
@@ -833,6 +832,9 @@ final class AppModel: ObservableObject {
         for (source, sourceSessions) in sessions {
             let activeSourceSessions = sourceSessions.filter { _, tracked in
                 if !tracked.subagents.isEmpty {
+                    return true
+                }
+                if isOngoingSessionEvent(tracked.event) {
                     return true
                 }
                 return now.timeIntervalSince(tracked.updatedAt) < activeSessionLifetime(for: tracked.event, source: source)
@@ -1599,6 +1601,15 @@ final class AppModel: ObservableObject {
             return 15
         case .idle, .thinking, .reading, .runningCommand, .editingCode, .unknown:
             return 30
+        }
+    }
+
+    private func isOngoingSessionEvent(_ event: AgentEvent) -> Bool {
+        switch event.kind {
+        case .thinking, .reading, .runningCommand, .editingCode:
+            return true
+        case .idle, .permissionRequest, .error, .completed, .unknown:
+            return false
         }
     }
 
