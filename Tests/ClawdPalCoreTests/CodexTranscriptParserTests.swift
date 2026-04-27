@@ -85,6 +85,42 @@ struct CodexTranscriptParserTests {
     }
 
     @Test
+    func activityCutoffDoesNotRestoreOldCompletedTurns() throws {
+        let cutoff = try #require(Self.date("2026-04-23T06:21:00.000Z"))
+        let text = """
+        {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:20:36.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"timestamp":"2026-04-23T06:20:38.000Z","type":"event_msg","payload":{"type":"user_message","message":"old completed turn"}}
+        {"timestamp":"2026-04-23T06:20:40.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+        """
+
+        var accumulator = CodexTranscriptParser.Accumulator(activityCutoff: cutoff)
+        try accumulator.consume(text: text)
+        let snapshot = try #require(accumulator.snapshot())
+
+        #expect(snapshot.event.kind == .idle)
+        #expect(snapshot.latestUserLine == nil)
+    }
+
+    @Test
+    func activityCutoffKeepsNewCompletedTurns() throws {
+        let cutoff = try #require(Self.date("2026-04-23T06:21:00.000Z"))
+        let text = """
+        {"timestamp":"2026-04-23T06:20:32.340Z","type":"session_meta","payload":{"id":"demo-session","cwd":"/tmp/project"}}
+        {"timestamp":"2026-04-23T06:21:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"timestamp":"2026-04-23T06:21:04.000Z","type":"event_msg","payload":{"type":"user_message","message":"new completed turn"}}
+        {"timestamp":"2026-04-23T06:21:06.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+        """
+
+        var accumulator = CodexTranscriptParser.Accumulator(activityCutoff: cutoff)
+        try accumulator.consume(text: text)
+        let snapshot = try #require(accumulator.snapshot())
+
+        #expect(snapshot.event.kind == .completed)
+        #expect(snapshot.latestUserLine == "new completed turn")
+    }
+
+    @Test
     func parsesSubagentParentMetadata() throws {
         let text = """
         {"timestamp":"2026-04-24T06:13:42.936Z","type":"session_meta","payload":{"id":"child-session","timestamp":"2026-04-24T06:13:41.246Z","cwd":"/tmp/project","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Kepler","agent_role":"explorer"}}}}}
@@ -139,5 +175,11 @@ struct CodexTranscriptParserTests {
         #expect(subagent.sessionID == "child-a")
         #expect(subagent.latestSummary == "shutdown")
         #expect(subagent.kind == .completed)
+    }
+
+    private static func date(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text)
     }
 }

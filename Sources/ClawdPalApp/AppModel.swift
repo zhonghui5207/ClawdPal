@@ -711,7 +711,7 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshActiveSessions(now: Date = Date()) {
-        pruneExpiredSessions(now: now)
+        refreshRetainedSessions(now: now)
 
         let aliveSessions = visibleSessions(from: mergedSessions())
         let activeSessions = filteredActiveSessions(from: aliveSessions, now: now)
@@ -794,16 +794,16 @@ final class AppModel: ObservableObject {
         return visible
     }
 
-    private func pruneExpiredSessions(now: Date) {
-        sessionsBySource = prunedSessions(from: sessionsBySource, now: now)
-        transcriptSessionsBySource = prunedSessions(from: transcriptSessionsBySource, now: now)
+    private func refreshRetainedSessions(now: Date) {
+        sessionsBySource = sessionsKeepingVisibleEntries(from: sessionsBySource, now: now)
+        transcriptSessionsBySource = sessionsKeepingVisibleEntries(from: transcriptSessionsBySource, now: now)
     }
 
-    private func prunedSessions(
+    private func sessionsKeepingVisibleEntries(
         from sessions: [String: [String: TrackedSession]],
         now: Date
     ) -> [String: [String: TrackedSession]] {
-        var pruned = sessions
+        var retained = sessions
         for (source, sourceSessions) in sessions {
             var filtered: [String: TrackedSession] = [:]
             for (sessionID, tracked) in sourceSessions {
@@ -822,18 +822,15 @@ final class AppModel: ObservableObject {
                     filtered[sessionID] = nextTracked
                     continue
                 }
-                guard now.timeIntervalSince(nextTracked.updatedAt) < aliveSessionLifetime(for: nextTracked.event, source: source) else {
-                    continue
-                }
                 filtered[sessionID] = nextTracked
             }
             if filtered.isEmpty {
-                pruned.removeValue(forKey: source)
+                retained.removeValue(forKey: source)
             } else {
-                pruned[source] = filtered
+                retained[source] = filtered
             }
         }
-        return pruned
+        return retained
     }
 
     private func filteredActiveSessions(
@@ -958,17 +955,15 @@ final class AppModel: ObservableObject {
     }
 
     private func shouldAcceptCodexSnapshot(_ snapshot: CodexTranscriptSnapshot, isAlreadyTracked: Bool, now: Date) -> Bool {
-        if shouldRemoveSession(for: snapshot.event, source: "Codex", now: now, updatedAt: snapshot.updatedAt) {
-            return false
-        }
-
         if isAlreadyTracked {
             return true
         }
 
         switch snapshot.event.kind {
-        case .completed, .idle, .unknown:
+        case .idle, .unknown:
             return false
+        case .completed:
+            return true
         case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
             return now.timeIntervalSince(snapshot.updatedAt) < activeSessionLifetime(for: snapshot.event, source: "Codex")
         }
@@ -1626,40 +1621,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func aliveSessionLifetime(for event: AgentEvent, source: String) -> TimeInterval {
-        if isSessionExitEvent(event, source: source) {
-            return 4
-        }
-
-        switch source {
-        case "Claude":
-            return .infinity
-        case "Codex":
-            switch event.kind {
-            case .completed:
-                return 120
-            case .idle, .unknown:
-                return 30
-            case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
-                return .infinity
-            }
-        default:
-            return activeSessionLifetime(for: event, source: source)
-        }
-    }
-
-    private func shouldRemoveSession(
-        for event: AgentEvent,
-        source: String,
-        now: Date,
-        updatedAt: Date
-    ) -> Bool {
-        now.timeIntervalSince(updatedAt) >= aliveSessionLifetime(for: event, source: source)
-    }
-
-    private func isSessionExitEvent(_ event: AgentEvent, source: String) -> Bool {
-        source == "Claude" && event.hookEventName == "SessionEnd"
-    }
 }
 
 extension Notification.Name {
