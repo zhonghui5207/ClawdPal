@@ -48,7 +48,6 @@ public enum ClaudeHookSettings {
         "CwdChanged",
         "Stop",
         "StopFailure",
-        "SessionStart",
         "SessionEnd"
     ]
 
@@ -75,6 +74,17 @@ public enum ClaudeHookSettings {
         let hooksValue = root["hooks"] ?? .object([:])
         guard case .object(var hooksObject) = hooksValue else {
             throw ClaudeHookSettingsError.invalidHooksRoot
+        }
+
+        let desiredEvents = Set(events)
+        for (event, value) in hooksObject where !desiredEvents.contains(event) {
+            guard let groups = value.arrayValue else { continue }
+            let cleanedGroups = groups.filter { !containsClawdPalHook($0) }
+            if cleanedGroups.isEmpty {
+                hooksObject.removeValue(forKey: event)
+            } else if cleanedGroups.count != groups.count {
+                hooksObject[event] = .array(cleanedGroups)
+            }
         }
 
         for event in events {

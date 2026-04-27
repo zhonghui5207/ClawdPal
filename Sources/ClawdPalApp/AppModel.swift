@@ -549,6 +549,10 @@ final class AppModel: ObservableObject {
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
+        if source == "Claude", shouldIgnoreClaudeEvent(envelope.event) {
+            refreshActiveSessions(now: envelope.receivedAt)
+            return
+        }
 
         var sourceSessions = sessionsBySource[source] ?? [:]
         var tracked = sourceSessions[sessionID] ?? TrackedSession(
@@ -558,19 +562,24 @@ final class AppModel: ObservableObject {
             latestUserLine: nil
         )
 
-        tracked.event = envelope.event
+        var event = envelope.event
+        if event.workingDirectory?.isEmpty != false {
+            event.workingDirectory = tracked.event.workingDirectory
+        }
+
+        tracked.event = event
         tracked.updatedAt = envelope.receivedAt
         if let terminalWindowContext = terminalJumpService.currentTerminalWindowContext(
             sessionID: sessionID,
-            workingDirectory: envelope.event.workingDirectory
+            workingDirectory: event.workingDirectory
         ) {
             tracked.terminalWindowContext = terminalWindowContext
         }
-        if let latestUserLine = cleanedMessage(envelope.event.message, prefix: "Prompt:"), !latestUserLine.isEmpty {
+        if let latestUserLine = cleanedMessage(event.message, prefix: "Prompt:"), !latestUserLine.isEmpty {
             tracked.latestUserLine = latestUserLine
         }
 
-        updateSubagents(for: envelope.event, receivedAt: envelope.receivedAt, tracked: &tracked)
+        updateSubagents(for: event, receivedAt: envelope.receivedAt, tracked: &tracked)
         sourceSessions[sessionID] = tracked
         sessionsBySource[source] = sourceSessions
         refreshActiveSessions(now: envelope.receivedAt)
@@ -628,6 +637,10 @@ final class AppModel: ObservableObject {
         case .completed, .idle, .unknown:
             return false
         }
+    }
+
+    private func shouldIgnoreClaudeEvent(_ event: AgentEvent) -> Bool {
+        event.hookEventName == "SessionStart"
     }
 
     private func hasActiveSubagents(source: String, sessionID: String?) -> Bool {

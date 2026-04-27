@@ -110,6 +110,52 @@ struct ClaudeHookSettingsTests {
     }
 
     @Test
+    func installRemovesStaleClawdPalHooksFromUnwantedEvents() throws {
+        let directory = try temporaryDirectory()
+        let settingsPath = directory.appendingPathComponent("settings.json").path
+        let hookPath = try fakeExecutable(in: directory)
+
+        try """
+        {
+          "hooks": {
+            "SessionStart": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "'/tmp/ClawdPalHooks' --source claude"
+                  }
+                ]
+              },
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/tmp/existing-session-start-hook"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!.write(to: URL(fileURLWithPath: settingsPath))
+
+        _ = try ClaudeHookSettings.install(
+            settingsPath: settingsPath,
+            hookBinaryPath: hookPath,
+            events: ["PreToolUse"]
+        )
+
+        let settings = try readSettings(settingsPath)
+        let hooks = try #require(settings.objectValue?["hooks"]?.objectValue)
+        let sessionStartGroups = try #require(hooks["SessionStart"]?.arrayValue)
+
+        #expect(sessionStartGroups.count == 1)
+        #expect(sessionStartGroups.contains { containsCommand($0, "/tmp/existing-session-start-hook") })
+        #expect(!sessionStartGroups.contains { containsCommand($0, "ClawdPalHooks") })
+    }
+
+    @Test
     func uninstallRemovesOnlyClawdPalHooks() throws {
         let directory = try temporaryDirectory()
         let settingsPath = directory.appendingPathComponent("settings.json").path
