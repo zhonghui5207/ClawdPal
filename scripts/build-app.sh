@@ -28,6 +28,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>en</string>
   <key>CFBundleExecutable</key>
   <string>ClawdPalApp</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>studio.lovexai.ClawdPal</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -62,6 +64,8 @@ if [ -d "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" ]; then
   cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle" "$APP_DIR/ClawdPal_ClawdPalApp.bundle"
   cp -R "$BIN_DIR/ClawdPal_ClawdPalApp.bundle/Resources" "$RESOURCES_DIR/ClawdPalResources"
 fi
+
+cp "$ROOT_DIR/Assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 codesign --force --sign - --identifier studio.lovexai.ClawdPal --requirements "$APP_REQUIREMENT" "$APP_DIR" >/dev/null 2>&1 || true
 
