@@ -3,14 +3,11 @@ import ClawdPalCore
 import SwiftUI
 
 private enum PetSpriteMotion {
-    static let breathScale: CGFloat = 1.01
-    static let restScale: CGFloat = 0.995
     static let pressedScale: CGFloat = 0.985
     static let floatOffset: CGFloat = 3
     static let pointerTilt: CGFloat = 2.8
     static let pointerX: CGFloat = 4.5
     static let pointerY: CGFloat = 2
-    static let breathDuration: TimeInterval = 2.8
     static let floatDuration: TimeInterval = 4.2
     static let blinkRange: ClosedRange<Double> = 2.6...5.6
 }
@@ -22,7 +19,6 @@ struct PetSpriteView: View {
     var isAnimated = true
     var eventKind: AgentEventKind = .idle
 
-    @State private var breathing = false
     @State private var floating = false
     @State private var blinkAmount: CGFloat = 0.0
     @State private var reactionX: CGFloat = 0.0
@@ -33,9 +29,13 @@ struct PetSpriteView: View {
         Group {
             if let image = ClawdPalImageStore.shared.image(for: mood) {
                 Image(nsImage: image)
-                    .interpolation(.none)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFit()
+                    .id(mood)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.orange)
@@ -50,9 +50,6 @@ struct PetSpriteView: View {
         .accessibilityLabel(Text(mood.displayName))
         .onAppear {
             guard isAnimated else { return }
-            withAnimation(.easeInOut(duration: PetSpriteMotion.breathDuration).repeatForever(autoreverses: true)) {
-                breathing = true
-            }
             withAnimation(.easeInOut(duration: PetSpriteMotion.floatDuration).repeatForever(autoreverses: true)) {
                 floating = true
             }
@@ -75,7 +72,7 @@ struct PetSpriteView: View {
     private var spriteScale: CGFloat {
         guard isAnimated else { return 1 }
         if isPressed { return PetSpriteMotion.pressedScale }
-        return breathing ? PetSpriteMotion.breathScale : PetSpriteMotion.restScale
+        return 1
     }
 
     private var verticalOffset: CGFloat {
