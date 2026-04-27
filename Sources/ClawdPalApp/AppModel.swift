@@ -125,6 +125,9 @@ final class AppModel: ObservableObject {
     private let subagentLifetime: TimeInterval = 30 * 60
     private let completedSubagentLifetime: TimeInterval = 8
     private let demoSessionPrefix = "clawdpal-demo-"
+    private let ignoredSessionPrefixes = [
+        "clawdpal-visual-test"
+    ]
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
     private var transcriptPollTimer: DispatchSourceTimer?
@@ -462,6 +465,11 @@ final class AppModel: ObservableObject {
         sessionID?.hasPrefix(demoSessionPrefix) == true
     }
 
+    private func isIgnoredSession(_ sessionID: String?) -> Bool {
+        guard let sessionID else { return false }
+        return ignoredSessionPrefixes.contains { sessionID.hasPrefix($0) }
+    }
+
     private func displaySource(_ source: String) -> String {
         switch source {
         case "claude-code", "claude":
@@ -553,6 +561,12 @@ final class AppModel: ObservableObject {
         guard (source == "Claude" || source == "Codex"),
               let sessionID = envelope.event.sessionID,
               !sessionID.isEmpty else {
+            refreshActiveSessions(now: envelope.receivedAt)
+            return
+        }
+        guard !isIgnoredSession(sessionID) else {
+            sessionsBySource[source]?.removeValue(forKey: sessionID)
+            transcriptSessionsBySource[source]?.removeValue(forKey: sessionID)
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
@@ -833,6 +847,9 @@ final class AppModel: ObservableObject {
         for (source, sourceSessions) in sessions {
             var filtered: [String: TrackedSession] = [:]
             for (sessionID, tracked) in sourceSessions {
+                if isIgnoredSession(sessionID) {
+                    continue
+                }
                 if source == "Codex", codexSubagentParents[sessionID] != nil {
                     continue
                 }
