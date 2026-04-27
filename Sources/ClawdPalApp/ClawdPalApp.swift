@@ -18,10 +18,12 @@ struct ClawdPalApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let appModel = AppModel()
     private var windowController: FloatingPetWindowController?
+    private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = FloatingPetWindowController(appModel: appModel)
         windowController = controller
+        menuBarController = MenuBarController(appModel: appModel, windowController: controller)
         controller.show()
         appModel.start()
     }

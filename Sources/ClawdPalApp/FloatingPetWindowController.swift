@@ -79,6 +79,18 @@ final class FloatingPetWindowController {
         window.orderFrontRegardless()
     }
 
+    func hide() {
+        window.orderOut(nil)
+    }
+
+    func toggleVisibility() {
+        window.isVisible ? hide() : show()
+    }
+
+    var isVisible: Bool {
+        window.isVisible
+    }
+
     @objc private func windowDidMove() {
         saveFrame()
     }

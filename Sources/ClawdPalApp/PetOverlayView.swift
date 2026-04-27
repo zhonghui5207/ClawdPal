@@ -32,7 +32,7 @@ struct PetOverlayView: View {
 
     var body: some View {
         let bubbleKind = appModel.focusedSession?.kind ?? appModel.lastEvent?.kind ?? .idle
-        let bubbleKey = "\(bubbleKind.rawValue)-\(appModel.bubbleText)"
+        let bubbleKey = "\(appModel.presentationMode.rawValue)-\(bubbleKind.rawValue)-\(appModel.bubbleText)"
 
         ZStack(alignment: .bottom) {
             VStack(spacing: Layout.stackSpacing) {
@@ -46,7 +46,7 @@ struct PetOverlayView: View {
                         .transition(.opacity)
                 }
 
-                if !isPanelOpen, isBubbleVisible {
+                if !isPanelOpen, isBubbleVisible, appModel.presentationMode.allowsBubble(for: bubbleKind) {
                     StatusBubbleView(text: appModel.bubbleText, kind: bubbleKind)
                         .frame(maxWidth: 260)
                         .transition(.scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
@@ -56,6 +56,7 @@ struct PetOverlayView: View {
                     mood: appModel.mood,
                     pointerOffset: pointerOffset,
                     isPressed: isPetPressed,
+                    isAnimated: appModel.presentationMode.allowsSpriteAnimation,
                     eventKind: bubbleKind
                 )
                     .frame(width: 210, height: 150)
@@ -99,6 +100,11 @@ struct PetOverlayView: View {
         .task(id: bubbleKey) {
             await scheduleBubbleVisibility(for: bubbleKind)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .clawdPalOpenPanel)) { _ in
+            withAnimation(.easeOut(duration: Layout.panelFadeDuration)) {
+                isPanelOpen = true
+            }
+        }
         .onChange(of: isPanelOpen) { isOpen in
             NotificationCenter.default.post(
                 name: .clawdPalSetPanelOpen,
@@ -141,6 +147,11 @@ struct PetOverlayView: View {
 
     @MainActor
     private func scheduleBubbleVisibility(for kind: AgentEventKind) async {
+        guard appModel.presentationMode.allowsBubble(for: kind) else {
+            isBubbleVisible = false
+            return
+        }
+
         withAnimation(.spring(response: 0.24, dampingFraction: 0.76)) {
             isBubbleVisible = true
         }

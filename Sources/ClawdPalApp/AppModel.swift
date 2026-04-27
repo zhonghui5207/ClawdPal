@@ -5,6 +5,10 @@ import Foundation
 
 @MainActor
 final class AppModel: ObservableObject {
+    private enum DefaultsKey {
+        static let presentationMode = "presentationMode"
+    }
+
     struct SessionDisplay: Identifiable, Equatable {
         var source: String
         var sessionID: String
@@ -110,6 +114,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var focusedSession: SessionDisplay?
     @Published private(set) var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @Published var isHookManagerOpen: Bool = false
+    @Published private(set) var presentationMode: PresentationMode
 
     private let bridgeServer = BridgeServer()
     private let terminalJumpService = TerminalJumpService()
@@ -129,6 +134,11 @@ final class AppModel: ObservableObject {
     private var archivedSessions: [String: Date] = [:]
     private var focusedSessionID: String?
     private var focusedSessionChangedAt: Date = .distantPast
+
+    init() {
+        let storedMode = UserDefaults.standard.string(forKey: DefaultsKey.presentationMode)
+        presentationMode = storedMode.flatMap(PresentationMode.init(rawValue:)) ?? .normal
+    }
 
     func start() {
         refreshHookStatus()
@@ -217,6 +227,7 @@ final class AppModel: ObservableObject {
         isHookManagerOpen = true
         refreshHookStatus()
         refreshAccessibilityStatus()
+        NotificationCenter.default.post(name: .clawdPalOpenPanel, object: nil)
     }
 
     func hideHookManager() {
@@ -259,6 +270,21 @@ final class AppModel: ObservableObject {
             focusedSessionID = nil
         }
         refreshActiveSessions()
+    }
+
+    func archiveAllVisibleSessions() {
+        let now = Date()
+        for session in sourceSections.flatMap(\.sessions) {
+            archivedSessions[session.id] = now
+        }
+        focusedSessionID = nil
+        refreshActiveSessions()
+    }
+
+    func setPresentationMode(_ mode: PresentationMode) {
+        guard presentationMode != mode else { return }
+        presentationMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: DefaultsKey.presentationMode)
     }
 
     var panelSourceText: String {
@@ -1625,6 +1651,7 @@ final class AppModel: ObservableObject {
 
 extension Notification.Name {
     static let clawdPalDragEnded = Notification.Name("clawdPalDragEnded")
+    static let clawdPalOpenPanel = Notification.Name("clawdPalOpenPanel")
     static let clawdPalResetWindowPosition = Notification.Name("clawdPalResetWindowPosition")
     static let clawdPalSetPanelOpen = Notification.Name("clawdPalSetPanelOpen")
 }
