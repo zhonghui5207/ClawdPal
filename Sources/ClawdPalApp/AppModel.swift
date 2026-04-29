@@ -126,7 +126,22 @@ final class AppModel: ObservableObject {
     private let completedSubagentLifetime: TimeInterval = 8
     private let demoSessionPrefix = "clawdpal-demo-"
     private let ignoredSessionPrefixes = [
-        "clawdpal-visual-test"
+        "clawdpal-test-",
+        "clawdpal-visual-test",
+        "manual-claude-state-test"
+    ]
+    private let hiddenCodexPromptPrefixes = [
+        "You are a helpful assist",
+        "You are Codex",
+        "You are an expert at",
+        "Generate 0 to "
+    ]
+    private let explicitSessionEndEvents = [
+        "SessionEnd",
+        "SessionClose",
+        "SessionClosed",
+        "ProcessExit",
+        "Exit"
     ]
     private var completionTimer: Timer?
     private var activityRefreshTimer: Timer?
@@ -135,6 +150,7 @@ final class AppModel: ObservableObject {
     private var transcriptSessionsBySource: [String: [String: TrackedSession]] = [:]
     private var codexSubagentParents: [String: String] = [:]
     private var archivedSessions: [String: Date] = [:]
+    private var endedSessions: Set<String> = []
     private var focusedSessionID: String?
     private var focusedSessionChangedAt: Date = .distantPast
 
@@ -558,15 +574,25 @@ final class AppModel: ObservableObject {
     }
 
     private func updateTrackedSessions(for envelope: BridgeEnvelope, source: String) {
-        guard (source == "Claude" || source == "Codex"),
-              let sessionID = envelope.event.sessionID,
-              !sessionID.isEmpty else {
+        guard source == "Claude" || source == "Codex" else {
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
+
+        guard let sessionID = resolvedSessionID(for: envelope.event, source: source) else {
+            refreshActiveSessions(now: envelope.receivedAt)
+            return
+        }
+
         guard !isIgnoredSession(sessionID) else {
             sessionsBySource[source]?.removeValue(forKey: sessionID)
             transcriptSessionsBySource[source]?.removeValue(forKey: sessionID)
+            refreshActiveSessions(now: envelope.receivedAt)
+            return
+        }
+
+        if isExplicitSessionEnd(envelope.event) {
+            markSessionEnded(source: source, sessionID: sessionID)
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
@@ -583,26 +609,30 @@ final class AppModel: ObservableObject {
             return
         }
 
+        var event = envelope.event
+        if event.sessionID?.isEmpty != false {
+            event.sessionID = sessionID
+        }
+
         let isExistingSession = sessionsBySource[source]?[sessionID] != nil
             || transcriptSessionsBySource[source]?[sessionID] != nil
-        if source == "Codex", !isExistingSession, !shouldStartCodexSession(from: envelope.event) {
+        if source == "Codex", !isExistingSession, !shouldStartCodexSession(from: event) {
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
-        if source == "Claude", shouldIgnoreClaudeEvent(envelope.event) {
+        if source == "Claude", shouldIgnoreClaudeEvent(event) {
             refreshActiveSessions(now: envelope.receivedAt)
             return
         }
 
         var sourceSessions = sessionsBySource[source] ?? [:]
         var tracked = sourceSessions[sessionID] ?? TrackedSession(
-            event: envelope.event,
+            event: event,
             updatedAt: envelope.receivedAt,
             taskTitle: nil,
             latestUserLine: nil
         )
 
-        var event = envelope.event
         if event.workingDirectory?.isEmpty != false {
             event.workingDirectory = tracked.event.workingDirectory
         }
@@ -624,6 +654,51 @@ final class AppModel: ObservableObject {
         sessionsBySource[source] = sourceSessions
         refreshActiveSessions(now: envelope.receivedAt)
         ensureActivityRefreshTimer()
+    }
+
+    private func markSessionEnded(source: String, sessionID: String) {
+        let key = sessionKey(source: source, sessionID: sessionID)
+        endedSessions.insert(key)
+        sessionsBySource[source]?.removeValue(forKey: sessionID)
+        transcriptSessionsBySource[source]?.removeValue(forKey: sessionID)
+        codexSubagentParents = codexSubagentParents.filter { childID, parentID in
+            childID != sessionID && parentID != sessionID
+        }
+        if focusedSessionID == key {
+            focusedSessionID = nil
+        }
+    }
+
+    private func resolvedSessionID(for event: AgentEvent, source: String) -> String? {
+        if let sessionID = event.sessionID, !sessionID.isEmpty {
+            return sessionID
+        }
+        guard event.kind == .completed else {
+            return nil
+        }
+        return mostRecentSessionID(for: source)
+    }
+
+    private func mostRecentSessionID(for source: String) -> String? {
+        var candidates = sessionsBySource[source] ?? [:]
+        for (sessionID, tracked) in transcriptSessionsBySource[source] ?? [:] {
+            if let existing = candidates[sessionID], existing.updatedAt >= tracked.updatedAt {
+                continue
+            }
+            candidates[sessionID] = tracked
+        }
+        return candidates
+            .filter { !isIgnoredSession($0.key) }
+            .sorted { lhs, rhs in lhs.value.updatedAt > rhs.value.updatedAt }
+            .first?
+            .key
+    }
+
+    private func isExplicitSessionEnd(_ event: AgentEvent) -> Bool {
+        guard let hookEventName = event.hookEventName else {
+            return false
+        }
+        return explicitSessionEndEvents.contains(hookEventName)
     }
 
     private func attachCodexSubagentEvent(
@@ -887,9 +962,6 @@ final class AppModel: ObservableObject {
                 if !tracked.subagents.isEmpty {
                     return true
                 }
-                if isOngoingSessionEvent(tracked.event) {
-                    return true
-                }
                 return now.timeIntervalSince(tracked.updatedAt) < activeSessionLifetime(for: tracked.event, source: source)
             }
             if !activeSourceSessions.isEmpty {
@@ -935,6 +1007,18 @@ final class AppModel: ObservableObject {
         let now = Date()
 
         for snapshot in snapshots where !snapshot.isSubagent {
+            if endedSessions.contains(sessionKey(source: "Codex", sessionID: snapshot.sessionID)) {
+                nextCodexSessions.removeValue(forKey: snapshot.sessionID)
+                sessionsBySource["Codex"]?.removeValue(forKey: snapshot.sessionID)
+                continue
+            }
+
+            if isInternalCodexPrompt(snapshot) {
+                nextCodexSessions.removeValue(forKey: snapshot.sessionID)
+                sessionsBySource["Codex"]?.removeValue(forKey: snapshot.sessionID)
+                continue
+            }
+
             for subagent in snapshot.subagents {
                 codexSubagentParents[subagent.sessionID] = snapshot.sessionID
                 nextCodexSessions.removeValue(forKey: subagent.sessionID)
@@ -966,6 +1050,11 @@ final class AppModel: ObservableObject {
 
         for snapshot in snapshots where snapshot.isSubagent {
             guard let parentSessionID = snapshot.parentSessionID else {
+                continue
+            }
+            if endedSessions.contains(sessionKey(source: "Codex", sessionID: parentSessionID)) {
+                nextCodexSessions[parentSessionID]?.subagents.removeValue(forKey: snapshot.sessionID)
+                sessionsBySource["Codex"]?[parentSessionID]?.subagents.removeValue(forKey: snapshot.sessionID)
                 continue
             }
             codexSubagentParents[snapshot.sessionID] = parentSessionID
@@ -1006,7 +1095,7 @@ final class AppModel: ObservableObject {
         case .idle, .unknown:
             return false
         case .completed:
-            return true
+            return false
         case .thinking, .reading, .runningCommand, .editingCode, .permissionRequest, .error:
             return now.timeIntervalSince(snapshot.updatedAt) < activeSessionLifetime(for: snapshot.event, source: "Codex")
         }
@@ -1158,20 +1247,34 @@ final class AppModel: ObservableObject {
             return false
         }
 
+        if isInternalCodexPrompt(tracked) {
+            return true
+        }
+
         switch tracked.event.kind {
         case .completed:
             return false
         case .idle, .unknown:
             return true
         case .thinking:
-            let line = tracked.latestUserLine ?? cleanedMessage(tracked.event.message, prefix: "Prompt:")
-            if let line, line.hasPrefix("You are a helpful assist") || line.hasPrefix("You are Codex") {
-                return true
-            }
             return false
         case .reading, .runningCommand, .editingCode, .permissionRequest, .error:
             return false
         }
+    }
+
+    private func isInternalCodexPrompt(_ tracked: TrackedSession) -> Bool {
+        guard let line = tracked.latestUserLine ?? cleanedMessage(tracked.event.message, prefix: "Prompt:") else {
+            return false
+        }
+        return hiddenCodexPromptPrefixes.contains { line.hasPrefix($0) }
+    }
+
+    private func isInternalCodexPrompt(_ snapshot: CodexTranscriptSnapshot) -> Bool {
+        guard let line = snapshot.latestUserLine ?? cleanedMessage(snapshot.event.message, prefix: "Prompt:") else {
+            return false
+        }
+        return hiddenCodexPromptPrefixes.contains { line.hasPrefix($0) }
     }
 
     private func sectionHeadline(for displays: [SessionDisplay]) -> String {
@@ -1652,15 +1755,6 @@ final class AppModel: ObservableObject {
             return 15
         case .idle, .thinking, .reading, .runningCommand, .editingCode, .unknown:
             return 30
-        }
-    }
-
-    private func isOngoingSessionEvent(_ event: AgentEvent) -> Bool {
-        switch event.kind {
-        case .thinking, .reading, .runningCommand, .editingCode:
-            return true
-        case .idle, .permissionRequest, .error, .completed, .unknown:
-            return false
         }
     }
 
