@@ -116,11 +116,14 @@ final class AppModel: ObservableObject {
     @Published var isHookManagerOpen: Bool = false
     @Published private(set) var presentationMode: PresentationMode
 
+    private var jumpGeneration: UInt64 = 0
+
     private let bridgeServer = BridgeServer()
     private let terminalJumpService = TerminalJumpService()
     private let hookSetupService = HookSetupService()
     private let codexTranscriptMonitor = CodexTranscriptMonitor()
     private let transcriptPollQueue = DispatchQueue(label: "studio.lovexai.ClawdPal.codex-transcripts", qos: .utility)
+    private let jumpQueue = DispatchQueue(label: "studio.lovexai.ClawdPal.terminal-jump", qos: .userInitiated)
     private let focusHoldDuration: TimeInterval = 5
     private let subagentLifetime: TimeInterval = 30 * 60
     private let completedSubagentLifetime: TimeInterval = 8
@@ -191,34 +194,47 @@ final class AppModel: ObservableObject {
     }
 
     func jumpBackToTerminal() {
+        let service = terminalJumpService
         if let focusedSession, shouldOpenCodexClient(for: focusedSession) {
-            bubbleText = terminalJumpService.activateCodex()
+            performJump { service.activateCodex() }
             return
         }
 
-        bubbleText = terminalJumpService.jump(
-            to: focusedSession?.workingDirectory ?? lastEvent?.workingDirectory,
-            sessionID: focusedSession?.sessionID ?? lastEvent?.sessionID,
-            windowContext: focusedSession?.terminalWindowContext
-        )
+        let wd = focusedSession?.workingDirectory ?? lastEvent?.workingDirectory
+        let sid = focusedSession?.sessionID ?? lastEvent?.sessionID
+        let ctx = focusedSession?.terminalWindowContext
+        performJump { service.jump(to: wd, sessionID: sid, windowContext: ctx) }
     }
 
     func jumpToSession(_ session: SessionDisplay) {
+        let service = terminalJumpService
         if shouldOpenCodexClient(for: session) {
-            bubbleText = terminalJumpService.activateCodex()
+            performJump { service.activateCodex() }
             return
         }
 
-        bubbleText = terminalJumpService.jump(
-            to: session.workingDirectory,
-            sessionID: session.sessionID,
-            windowContext: session.terminalWindowContext,
-            fallback: .none
-        )
+        let wd = session.workingDirectory
+        let sid = session.sessionID
+        let ctx = session.terminalWindowContext
+        performJump { service.jump(to: wd, sessionID: sid, windowContext: ctx, fallback: .none) }
     }
 
     func openCodexClient() {
-        bubbleText = terminalJumpService.activateCodex()
+        let service = terminalJumpService
+        performJump { service.activateCodex() }
+    }
+
+    private func performJump(_ action: @escaping () -> String) {
+        jumpGeneration &+= 1
+        let gen = jumpGeneration
+        bubbleText = "Jumping..."
+        jumpQueue.async { [weak self] in
+            let result = action()
+            Task { @MainActor [weak self] in
+                guard let self, self.jumpGeneration == gen else { return }
+                self.bubbleText = result
+            }
+        }
     }
 
     private func shouldOpenCodexClient(for session: SessionDisplay) -> Bool {
@@ -452,6 +468,7 @@ final class AppModel: ObservableObject {
 
     private func apply(_ envelope: BridgeEnvelope) {
         completionTimer?.invalidate()
+        jumpGeneration &+= 1
         lastEvent = envelope.event
         lastSource = displaySource(envelope.source)
         if isDemoSession(envelope.event.sessionID) {

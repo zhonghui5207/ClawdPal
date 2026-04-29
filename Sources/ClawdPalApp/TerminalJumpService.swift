@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Darwin
 import Foundation
 
 struct TerminalWindowContext: Equatable {
@@ -17,6 +18,8 @@ enum TerminalJumpFallback {
 }
 
 struct TerminalJumpService {
+    private static let processTimeout: TimeInterval = 5
+
     private let preferredBundleIDs = [
         "com.mitchellh.ghostty",
         "com.googlecode.iterm2",
@@ -144,31 +147,45 @@ struct TerminalJumpService {
     }
 
     private func openTerminal(bundleID: String, workingDirectory: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-b", bundleID, workingDirectory]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            return false
-        }
+        runProcess(executable: "/usr/bin/open", arguments: ["-b", bundleID, workingDirectory])
     }
 
     private func activateApplication(bundleID: String) -> Bool {
+        runProcess(executable: "/usr/bin/open", arguments: ["-b", bundleID])
+    }
+
+    private func runProcess(executable: String, arguments: [String]) -> Bool {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-b", bundleID]
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var terminated = false
+        var success = false
+
+        process.terminationHandler = { proc in
+            success = proc.terminationStatus == 0
+            terminated = true
+            semaphore.signal()
+        }
 
         do {
             try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
         } catch {
             return false
         }
+
+        let result = semaphore.wait(timeout: .now() + Self.processTimeout)
+        if result == .timedOut {
+            process.terminate()
+            _ = semaphore.wait(timeout: .now() + 1)
+            if !terminated {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            return false
+        }
+
+        return success
     }
 
     private func raiseTerminalWindow(matching context: TerminalWindowContext) -> Bool {
